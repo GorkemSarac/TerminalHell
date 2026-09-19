@@ -5,6 +5,8 @@ Score for each level
 
 Display total score at the end and total time
 
+Add a jumping mechanic
+
 Earth levels 1 2 3
 
 Hell-ish looking ray gun weapon

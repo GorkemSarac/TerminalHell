@@ -1,0 +1,41 @@
+<!--
+  TERMINAL HELL for Linux: the shared game code in ../src plus the Linux platform layer in ./src.
+  Windows-only files (console, raw input, waveOut, System.Drawing) are left out; LINUX is defined for the few
+  #if LINUX spots in shared code. Build with ./build.sh (Linux) or .\build.ps1 (Windows), which publish a
+  single self-contained executable: players need nothing else installed.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>terminalhell</AssemblyName>
+    <RootNamespace>TerminalHell</RootNamespace>
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- the shared code is written for the C# 5 compiler that ships with Windows: skip style warnings about it -->
+    <NoWarn>$(NoWarn);CS0169;CS0414;CS0649;CS8981</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- publishing for a runtime (linux-x64, linux-arm64): one self-contained file, no ICU needed
+       (all text formatting uses the invariant culture). A plain `dotnet run` stays a normal build for development. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../src/*.cs" Exclude="../src/Native.cs;../src/TermWin.cs;../src/InputWin.cs;../src/AudioWin.cs;../src/LegacyPresenter.cs;../src/DebugTools.cs" />
+    <Compile Include="src/*.cs" />
+  </ItemGroup>
+
+</Project>

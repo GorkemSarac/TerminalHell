@@ -1,4 +1,5 @@
-// TERMINAL HELL - console host management: private screen buffer, modes, font/size, window handle.
+// TERMINAL HELL - Windows console host management: private screen buffer, modes, font/size, window handle.
+// (the Linux version of this class is linux/src/TermLinux.cs)
 using System;
 using System.Text;
 
@@ -11,6 +12,7 @@ namespace TerminalHell
         public static bool IsClassicConsole;   // conhost window we can resize and re-font
         public static bool VtOk;
         public static float CellAspect = 1f;   // pixel width / pixel height for half-block pixels
+        public const string FullscreenKey = "ALT+ENTER";
 
         static uint origInMode, origOutMode;
         static CONSOLE_FONT_INFOEX origFont;

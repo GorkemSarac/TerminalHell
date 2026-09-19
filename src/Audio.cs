@@ -1,7 +1,8 @@
-// TERMINAL HELL - real-time stereo software mixer on top of the Windows waveOut API.
+// TERMINAL HELL - real-time stereo software mixer. The platform's AudioDevice pulls mixed blocks from it:
+//   Windows: AudioWin.cs (waveOut)
+//   Linux  : linux/src/AudioLinux.cs (PulseAudio / PipeWire, or ALSA)
 using System;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Collections.Generic;
 
 namespace TerminalHell
 {
@@ -16,8 +17,7 @@ namespace TerminalHell
     static class Audio
     {
         public const int Rate = 22050;
-        const int Frames = 384;       // per buffer (~17 ms)
-        const int NumBuf = 4;
+        public const int Frames = 384;       // per mixed block (~17 ms)
 
         sealed class Voice
         {
@@ -28,16 +28,10 @@ namespace TerminalHell
             public int Owner;
         }
 
-        static IntPtr hwo;
-        static IntPtr[] hdrs, bufs;
-        static int hdrSize, flagsOffset;
-        static Thread thread;
-        static volatile bool running;
         static readonly object sync = new object();
         static readonly Voice[] voices = new Voice[40];
         static float[][] bank;
         static readonly float[] mixL = new float[Frames], mixR = new float[Frames];
-        static readonly short[] pcm = new short[Frames * 2];
 
         public static float SfxVolume = 0.8f, MusicVolume = 0.5f;
         public static bool Enabled;
@@ -51,33 +45,7 @@ namespace TerminalHell
             {
                 bank = SfxBank.Build();
                 Music.Init();
-                var fmt = new WAVEFORMATEX();
-                fmt.wFormatTag = 1;
-                fmt.nChannels = 2;
-                fmt.nSamplesPerSec = Rate;
-                fmt.wBitsPerSample = 16;
-                fmt.nBlockAlign = 4;
-                fmt.nAvgBytesPerSec = Rate * 4;
-                if (Native.waveOutOpen(out hwo, -1, ref fmt, IntPtr.Zero, IntPtr.Zero, 0) != 0) { hwo = IntPtr.Zero; return; }
-                hdrSize = Marshal.SizeOf(typeof(WAVEHDR));
-                flagsOffset = (int)Marshal.OffsetOf(typeof(WAVEHDR), "dwFlags");
-                hdrs = new IntPtr[NumBuf]; bufs = new IntPtr[NumBuf];
-                for (int i = 0; i < NumBuf; i++)
-                {
-                    bufs[i] = Marshal.AllocHGlobal(Frames * 4);
-                    hdrs[i] = Marshal.AllocHGlobal(hdrSize);
-                    var h = new WAVEHDR();
-                    h.lpData = bufs[i];
-                    h.dwBufferLength = Frames * 4;
-                    Marshal.StructureToPtr(h, hdrs[i], false);
-                    Native.waveOutPrepareHeader(hwo, hdrs[i], hdrSize);
-                }
-                Enabled = true;
-                running = true;
-                thread = new Thread(Loop);
-                thread.IsBackground = true;
-                thread.Priority = ThreadPriority.AboveNormal;
-                thread.Start();
+                Enabled = AudioDevice.Start();
             }
             catch
             {
@@ -88,20 +56,7 @@ namespace TerminalHell
         public static void Shutdown()
         {
             if (!Enabled) return;
-            running = false;
-            if (thread != null) thread.Join(500);
-            try
-            {
-                Native.waveOutReset(hwo);
-                for (int i = 0; i < NumBuf; i++)
-                {
-                    Native.waveOutUnprepareHeader(hwo, hdrs[i], hdrSize);
-                    Marshal.FreeHGlobal(hdrs[i]);
-                    Marshal.FreeHGlobal(bufs[i]);
-                }
-                Native.waveOutClose(hwo);
-            }
-            catch { }
+            AudioDevice.Stop();
             Enabled = false;
         }
 
@@ -109,46 +64,10 @@ namespace TerminalHell
         public static int Underruns, WriteErrors, Exceptions, BuffersWritten;
         public static double MaxMixMs;
         public static string LastError;
-        public static System.Collections.Generic.List<short> Recording;
+        public static List<short> Recording;
 
-        static void Loop()
-        {
-            bool[] started = new bool[NumBuf];
-            var sw = new System.Diagnostics.Stopwatch();
-            while (running)
-            {
-                bool did = false;
-                try
-                {
-                    int done = 0;
-                    for (int i = 0; i < NumBuf; i++)
-                        if (!started[i] || (Marshal.ReadInt32(hdrs[i], flagsOffset) & 1) != 0) done++;
-                    if (done == NumBuf && BuffersWritten > 0) Underruns++;
-                    for (int i = 0; i < NumBuf; i++)
-                    {
-                        int flags = Marshal.ReadInt32(hdrs[i], flagsOffset);
-                        if (started[i] && (flags & 1) == 0) continue;   // WHDR_DONE not set yet: still playing
-                        sw.Restart();
-                        MixInto(bufs[i]);
-                        MaxMixMs = Math.Max(MaxMixMs, sw.Elapsed.TotalMilliseconds);
-                        Marshal.WriteInt32(hdrs[i], flagsOffset, flags & ~1);
-                        int rc = Native.waveOutWrite(hwo, hdrs[i], hdrSize);
-                        if (rc != 0) { WriteErrors++; LastError = "waveOutWrite " + rc; }
-                        started[i] = true;
-                        BuffersWritten++;
-                        did = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Exceptions++;
-                    LastError = ex.GetType().Name + ": " + ex.Message;
-                }
-                if (!did) Thread.Sleep(2);
-            }
-        }
-
-        static void MixInto(IntPtr dest)
+        /// <summary>Mixes the next Frames stereo frames into pcm (interleaved 16-bit). Called from the device's audio thread.</summary>
+        public static void Mix(short[] pcm)
         {
             Array.Clear(mixL, 0, Frames);
             Array.Clear(mixR, 0, Frames);
@@ -186,7 +105,6 @@ namespace TerminalHell
                 pcm[i * 2] = (short)(SoftClip(a * g) * 30000);
                 pcm[i * 2 + 1] = (short)(SoftClip(b * g) * 30000);
             }
-            Marshal.Copy(pcm, 0, dest, Frames * 2);
             var rec = Recording;
             if (rec != null) lock (rec) rec.AddRange(pcm);
         }

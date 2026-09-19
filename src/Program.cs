@@ -20,15 +20,25 @@ namespace TerminalHell
                 Console.WriteLine();
                 Console.WriteLine("  terminalhell              start the game");
                 Console.WriteLine("  terminalhell --ascii      start in ASCII display mode");
+#if !LINUX
                 Console.WriteLine("  terminalhell --legacy     start in 16 color mode (fastest, for old consoles)");
+#endif
                 Console.WriteLine("  terminalhell --level N    jump straight to level N (1-3)");
                 Console.WriteLine("  terminalhell --nomouse    keyboard only (arrow keys turn)");
                 Console.WriteLine("  terminalhell --nosound    disable audio");
+#if LINUX
+                Console.WriteLine("  terminalhell --no-evdev   never read keyboards and mice from /dev/input");
+                Console.WriteLine("  terminalhell --no-kitty   don't use the kitty keyboard protocol (key releases)");
+                Console.WriteLine("  terminalhell --input      show which keyboard and mouse input this terminal gives the game");
+#endif
                 Console.WriteLine();
                 Console.WriteLine("Settings are stored in " + Settings.Dir);
                 return 0;
             }
             if (argl.Contains("--version")) { Console.WriteLine(Version); return 0; }
+#if LINUX
+            if (argl.Contains("--input")) return InputCheck.Run(argl);
+#endif
 
             // developer tools that render to PNG files without touching the console
             if (argl.Count > 0 && argl[0].StartsWith("--dev-"))
@@ -171,6 +181,10 @@ namespace TerminalHell
                             a.Count > 8 ? float.Parse(a[8], inv) : 0, a[1], a.Count > 9 && a[9] == "ascii", a.Count > 10 ? int.Parse(a[10]) : -1, a.Count > 11 ? float.Parse(a[11], inv) : 0);
                         return 0;
                     }
+#if LINUX
+                case "--dev-linux-selftest":
+                    return LinuxSelfTest.Run();
+#else
                 case "--dev-icon":
                     {
                         // a pixel-art demon skull, saved as a multi-size .ico (PNG entries)
@@ -221,6 +235,7 @@ namespace TerminalHell
                         DebugTools.SavePng(img.Px, 32, 32, a[1] + ".png", 8);
                         return 0;
                     }
+#endif
                 case "--dev-audio-stress":
                     {
                         // plays the game's worst case (chaingun + monsters + music) on the real device and records the output

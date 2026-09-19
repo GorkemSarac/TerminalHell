@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# shell scripts must keep Unix line endings, even in a Windows checkout
+*.sh text eol=lf
+*.py text eol=lf
+# prebuilt binaries and images
+*.png binary
+*.ico binary

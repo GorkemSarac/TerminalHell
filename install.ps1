@@ -30,7 +30,7 @@
     Say '   a first person shooter for your terminal' DarkYellow
     Say ''
 
-    if ($env:OS -ne 'Windows_NT') { throw 'TERMINAL HELL runs on Windows only.' }
+    if ($env:OS -ne 'Windows_NT') { throw "This installer is for Windows. On Linux: curl -fsSL https://raw.githubusercontent.com/$Repo/$Branch/linux/install.sh | sh" }
 
     # ---- the C# compiler that comes with Windows
     $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'

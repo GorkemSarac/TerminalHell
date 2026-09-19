@@ -64,7 +64,9 @@ namespace TerminalHell
 
         public void Run()
         {
+#if !LINUX
             Native.timeBeginPeriod(1);
+#endif
             try
             {
                 var sw = Stopwatch.StartNew();
@@ -122,7 +124,9 @@ namespace TerminalHell
             }
             finally
             {
+#if !LINUX
                 Native.timeEndPeriod(1);
+#endif
             }
         }
 
@@ -204,6 +208,13 @@ namespace TerminalHell
             menus.Clear();
             Music.Play(levels[i].Music);
             world.Message(levels[i].Intro, Col.Rgb(255, 190, 110));
+#if LINUX
+            foreach (var note in Input.TakeNotices())
+            {
+                world.Message(note, Col.Rgb(255, 210, 120));
+                world.Messages[world.Messages.Count - 1].Time = 9f;   // what this terminal can't do: worth reading once
+            }
+#endif
             Input.ClearKeys();
         }
 
@@ -325,7 +336,7 @@ namespace TerminalHell
                 "  ESC ............ PAUSE MENU",
                 "  F5 ............. HD PIXELS / ASCII",
                 "  F12 ............ SCREENSHOT",
-                "  ALT+ENTER ...... FULLSCREEN",
+                "  " + (Term.FullscreenKey + " ").PadRight(16, '.') + " FULLSCREEN",
             };
             m.Add("BACK", () => CloseTopMenu());
             return m;
@@ -477,7 +488,7 @@ namespace TerminalHell
                 Directory.CreateDirectory(dir);
                 string file = Path.Combine(dir, "shot_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png");
                 DebugTools.SaveTerminalShot(scr, file);
-                if (world != null) world.Message("SCREENSHOT SAVED TO PICTURES\\TERMINALHELL", -1);
+                if (world != null) world.Message("SCREENSHOT SAVED TO PICTURES" + Path.DirectorySeparatorChar + "TERMINALHELL", -1);
             }
             catch { }
         }
@@ -542,6 +553,11 @@ namespace TerminalHell
             if (ty < scr.Rows) scr.PrintCenter(ty, sub, Col.Rgb(200, 150, 110), Screen.Transparent);
             string foot = " WASD MOVE  -  MOUSE LOOK  -  CLICK FIRE  -  E USE  -  ESC MENU ";
             if (scr.Cols > foot.Length + 2) scr.PrintCenter(scr.Rows - 1, foot, Col.Rgb(230, 200, 170), Col.Rgb(24, 8, 6));
+#if LINUX
+            // the game can't resize a Linux terminal itself: point out the zoom keys while the picture is coarse
+            string tip = " TIP: MAXIMIZE THIS WINDOW AND ZOOM OUT (CTRL -) FOR MORE DETAIL ";
+            if (scr.Cols < 150 && scr.Cols > tip.Length + 2) scr.PrintCenter(scr.Rows - 2, tip, Col.Rgb(255, 210, 120), Col.Rgb(40, 12, 8));
+#endif
             scr.Print(0, scr.Rows - 1, " v" + Program.Version + " ", Col.Rgb(170, 140, 120), Col.Rgb(24, 8, 6));
         }
 

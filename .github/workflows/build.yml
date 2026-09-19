@@ -30,3 +30,32 @@ jobs:
         with:
           name: TerminalHell
           path: bin/TerminalHell.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the Linux version (one self-contained file)
+        run: dotnet publish linux/TerminalHell.Linux.csproj -c Release -r linux-x64 -o out -nologo
+
+      - name: Input self test (escape sequences, key releases, mouse, /dev/input parsing)
+        run: ./out/terminalhell --dev-linux-selftest
+
+      - name: Check that every level can be completed
+        run: ./out/terminalhell --dev-check
+
+      - name: Soak test (random bot plays every level)
+        run: ./out/terminalhell --dev-soak
+
+      - name: Play inside a pseudo terminal (drawing, keys, Ctrl+C, SIGTERM, terminal restored)
+        run: python3 linux/tests/pty_smoke.py ./out/terminalhell
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terminalhell-linux-x64
+          path: out/terminalhell

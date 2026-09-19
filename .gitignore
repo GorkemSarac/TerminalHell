@@ -4,3 +4,4 @@ obj/
 *.exe
 *.pdb
 *.log
+linux/dist/
