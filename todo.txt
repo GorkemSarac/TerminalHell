@@ -1,0 +1,15 @@
+///////////////to add:
+
+Score for each level
+
+Display total score at the end and total time
+
+Earth levels 1 2 3
+
+Hell-ish looking ray gun weapon
+
+//////////////////Bugs:
+
+Need to fix Weapon models ✔
+
+Screen flashing doesnt need to happen when shooting, it reduces fps ✔

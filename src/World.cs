@@ -1,0 +1,695 @@
+// TERMINAL HELL - the running level: actors, collision, combat, doors, secrets and pickups.
+using System;
+using System.Collections.Generic;
+
+namespace TerminalHell
+{
+    sealed class GameMessage
+    {
+        public string Text;
+        public int Color;
+        public float Time;
+    }
+
+    sealed class World
+    {
+        public Map Map;
+        public Player P;
+        public Settings Settings;
+        public List<Actor> Actors = new List<Actor>();
+        readonly List<Actor> pending = new List<Actor>();
+        public Random Rng = new Random();
+        public float Time, LevelTime;
+        public int Kills, TotalKills, ItemsTaken, TotalItems, Secrets, TotalSecrets;
+        public float DamageMul = 1, AmmoMul = 1, Aggression = 1, ProjSpeedMul = 1;
+        public List<DynLight> Lights = new List<DynLight>();
+        readonly List<DynLight> lightPool = new List<DynLight>();
+        public Monster BossAwake;
+        public bool BossDead;
+        public bool ExitTriggered, LevelDone;
+        float exitTimer;
+        public readonly List<GameMessage> Messages = new List<GameMessage>();
+        public string Hint;
+        public int HintColor;
+        float flowTimer, noiseTimer;
+        public LevelDef Def;
+
+        public World(LevelDef def, Settings s, Player carry)
+        {
+            Def = def;
+            Settings = s;
+            switch (s.Difficulty)
+            {
+                case 0: DamageMul = 0.5f; AmmoMul = 1.5f; Aggression = 1.35f; ProjSpeedMul = 0.85f; break;
+                case 2: DamageMul = 1.35f; AmmoMul = 1f; Aggression = 0.7f; ProjSpeedMul = 1.2f; break;
+            }
+            Map = Map.Load(def);
+            P = new Player();
+            if (carry != null) P.CopyInventoryFrom(carry);
+            foreach (var sp in Map.Spawns) SpawnThing(sp.C, sp.X, sp.Y);
+            MergePending();
+            Map.BuildLightmap();
+            TotalSecrets = Map.SecretCount;
+            Map.BuildFlow((int)P.X, (int)P.Y);
+        }
+
+        void SpawnThing(char c, int x, int y)
+        {
+            float cx = x + 0.5f, cy = y + 0.5f;
+            switch (c)
+            {
+                case '^': P.X = cx; P.Y = cy; P.Angle = (float)(-Math.PI / 2); return;
+                case '>': P.X = cx; P.Y = cy; P.Angle = 0; return;
+                case 'v': P.X = cx; P.Y = cy; P.Angle = (float)(Math.PI / 2); return;
+                case '<': P.X = cx; P.Y = cy; P.Angle = (float)Math.PI; return;
+                case '%': Add(new Barrel(cx, cy)); return;
+                case '*':
+                    {
+                        var d = new Decor(Art.CeilLamp, cx, cy, false, 0.2f);
+                        d.Z = 1 - Art.CeilLamp.H / 64f;
+                        d.Glows = true;
+                        Add(d);
+                        Map.AddLight(cx, cy, 5.5f, 1.0f, Col.Rgb(255, 236, 200));
+                        return;
+                    }
+                case '!':
+                    {
+                        var d = new Decor(Art.Torch[0], cx, cy, true, 0.2f);
+                        d.Anim = Art.Torch;
+                        Add(d);
+                        Map.AddLight(cx, cy, 4.6f, 1.0f, Col.Rgb(255, 140, 50));
+                        return;
+                    }
+                case 't':
+                    {
+                        Add(new Decor(Art.TechLamp, cx, cy, true, 0.2f));
+                        Map.AddLight(cx, cy, 5.0f, 0.9f, Col.Rgb(200, 225, 255));
+                        return;
+                    }
+                case '|': Add(new Decor(Art.Pillar, cx, cy, true, 0.3f)); return;
+                case '&': Add(new Decor(Art.Corpse, cx, cy, false, 0.3f)); return;
+                case 'x': Add(new Decor(Art.BloodPool, cx, cy, false, 0.3f)); return;
+                case 'k': Add(new Decor(Art.Skulls, cx, cy, false, 0.3f)); return;
+            }
+            var md = MonsterDef.For(c);
+            if (md != null)
+            {
+                var m = new Monster(md, cx, cy);
+                m.Angle = (float)Math.Atan2(P.Y - cy, P.X - cx);
+                m.Angle = (float)(Rng.NextDouble() * Math.PI * 2);
+                Add(m);
+                TotalKills++;
+                return;
+            }
+            if (Art.Items.ContainsKey(c))
+            {
+                SpawnItem(c, cx, cy, false);
+                TotalItems++;
+                return;
+            }
+            throw new InvalidOperationException("Unknown map character '" + c + "' at " + x + "," + y + " in " + Def.Id);
+        }
+
+        public void SpawnItem(char c, float x, float y, bool dropped)
+        {
+            var it = new Item(c, x, y);
+            it.Dropped = dropped;
+            Add(it);
+        }
+
+        public void Add(Actor a) { pending.Add(a); }
+
+        void MergePending()
+        {
+            if (pending.Count > 0) { Actors.AddRange(pending); pending.Clear(); }
+        }
+
+        // ------------------------------------------------------------ frame update
+
+        public void Update(float dt, PlayerInput inp)
+        {
+            Time += dt;
+            if (!P.Dead && !ExitTriggered) LevelTime += dt;
+            foreach (var l in Lights) lightPool.Add(l);
+            Lights.Clear();
+            noiseTimer -= dt;
+
+            // monsters follow a distance field to the player
+            flowTimer -= dt;
+            int pcx = (int)P.X, pcy = (int)P.Y;
+            if (flowTimer <= 0 || pcx != Map.FlowFromX || pcy != Map.FlowFromY)
+            {
+                flowTimer = 0.5f;
+                Map.BuildFlow(pcx, pcy);
+            }
+
+            Audio.SetListener(P.X, P.Y, P.Angle);
+            P.Update(this, dt, inp);
+
+            for (int i = 0; i < Actors.Count; i++)
+            {
+                var a = Actors[i];
+                if (!a.Remove) a.Update(this, dt);
+            }
+            MergePending();
+            Actors.RemoveAll(a => a.Remove);
+
+            UpdateDoors(dt);
+            UpdatePushWalls(dt);
+
+            for (int i = Messages.Count - 1; i >= 0; i--)
+            {
+                Messages[i].Time -= dt;
+                if (Messages[i].Time <= 0) Messages.RemoveAt(i);
+            }
+
+            if (ExitTriggered)
+            {
+                exitTimer -= dt;
+                if (exitTimer <= 0) LevelDone = true;
+            }
+            UpdateHint();
+        }
+
+        public void Message(string text, int color)
+        {
+            foreach (var m in Messages)
+                if (m.Text == text) { m.Time = 3.5f; return; }
+            Messages.Add(new GameMessage { Text = text, Color = color < 0 ? Col.Rgb(230, 220, 200) : color, Time = 3.5f });
+            if (Messages.Count > 4) Messages.RemoveAt(0);
+        }
+
+        public void AddLight(float x, float y, float r, float cr, float cg, float cb)
+        {
+            DynLight l;
+            if (lightPool.Count > 0) { l = lightPool[lightPool.Count - 1]; lightPool.RemoveAt(lightPool.Count - 1); }
+            else l = new DynLight();
+            l.X = x; l.Y = y; l.R = r; l.Cr = cr; l.Cg = cg; l.Cb = cb;
+            Lights.Add(l);
+        }
+
+        public void AddMuzzleLight(float x, float y) { AddLight(x, y, 3.2f, 1.2f, 0.9f, 0.4f); }
+
+        public void Shake(float amount) { P.ShakeAmt = Math.Min(1.2f, Math.Max(P.ShakeAmt, amount)); }
+
+        // ------------------------------------------------------------ collision
+
+        bool Blocked(Actor a, float x, float y)
+        {
+            float r = a.Radius;
+            bool avoidsLava = a.Kind == ActorKind.Monster;
+            int x0 = (int)Math.Floor(x - r), x1 = (int)Math.Floor(x + r);
+            int y0 = (int)Math.Floor(y - r), y1 = (int)Math.Floor(y + r);
+            for (int cy = y0; cy <= y1; cy++)
+                for (int cx = x0; cx <= x1; cx++)
+                {
+                    if (!Map.BlocksMove(cx, cy) && !(avoidsLava && Map.HurtFloorAt(cx, cy))) continue;
+                    float nx = Math.Max(cx, Math.Min(x, cx + 1)), ny = Math.Max(cy, Math.Min(y, cy + 1));
+                    float dx = x - nx, dy = y - ny;
+                    if (dx * dx + dy * dy < r * r) return true;
+                }
+            foreach (var o in Actors)
+            {
+                if (!o.Solid || o == a) continue;
+                float rr = r + o.Radius;
+                float dx = x - o.X, dy = y - o.Y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 >= rr * rr) continue;
+                float odx = a.X - o.X, ody = a.Y - o.Y;
+                if (d2 < odx * odx + ody * ody) return true;   // allow separating when already overlapping
+            }
+            if (a != P && !P.Dead)
+            {
+                float rr = r + P.Radius;
+                float dx = x - P.X, dy = y - P.Y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 < rr * rr)
+                {
+                    float odx = a.X - P.X, ody = a.Y - P.Y;
+                    if (d2 < odx * odx + ody * ody) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Moves an actor with wall sliding.</summary>
+        public void TryMove(Actor a, float dx, float dy)
+        {
+            float len = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-6f) return;
+            int n = (int)Math.Ceiling(len / 0.15f);
+            float sx = dx / n, sy = dy / n;
+            for (int i = 0; i < n; i++)
+            {
+                if (!Blocked(a, a.X + sx, a.Y)) a.X += sx;
+                if (!Blocked(a, a.X, a.Y + sy)) a.Y += sy;
+            }
+        }
+
+        // ------------------------------------------------------------ doors and push walls
+
+        bool DoorOccupied(Door d)
+        {
+            if (Overlaps(P, d.X, d.Y)) return true;
+            foreach (var a in Actors)
+                if ((a.Solid || a.Kind == ActorKind.Item) && Overlaps(a, d.X, d.Y)) return true;
+            return false;
+        }
+
+        static bool Overlaps(Actor a, int cx, int cy)
+        {
+            return a.X + a.Radius > cx && a.X - a.Radius < cx + 1 && a.Y + a.Radius > cy && a.Y - a.Radius < cy + 1;
+        }
+
+        public void OpenDoor(Door d, bool byPlayer)
+        {
+            if (d.Key != 0 && !P.Keys[d.Key])
+            {
+                if (byPlayer)
+                {
+                    string[] names = { "", "RED", "BLUE", "YELLOW" };
+                    Message("YOU NEED A " + names[d.Key] + " KEYCARD TO OPEN THIS DOOR.", Col.Rgb(255, 90, 60));
+                    Audio.Play(Sfx.NoWay, 0.8f, 0, 1, 0);
+                }
+                return;
+            }
+            if (d.State == DoorState.Closed || d.State == DoorState.Closing)
+            {
+                d.State = DoorState.Opening;
+                Audio.PlayAt(Sfx.DoorOpen, d.X + 0.5f, d.Y + 0.5f);
+            }
+            else if (d.State == DoorState.Open && byPlayer && !DoorOccupied(d))
+            {
+                d.State = DoorState.Closing;
+                Audio.PlayAt(Sfx.DoorClose, d.X + 0.5f, d.Y + 0.5f);
+            }
+        }
+
+        void UpdateDoors(float dt)
+        {
+            foreach (var d in Map.Doors)
+            {
+                switch (d.State)
+                {
+                    case DoorState.Opening:
+                        d.Open += dt * 1.6f;
+                        if (d.Open >= 1) { d.Open = 1; d.State = DoorState.Open; d.Timer = 4.5f; }
+                        break;
+                    case DoorState.Open:
+                        d.Timer -= dt;
+                        if (d.Timer <= 0)
+                        {
+                            if (DoorOccupied(d)) d.Timer = 1;
+                            else { d.State = DoorState.Closing; Audio.PlayAt(Sfx.DoorClose, d.X + 0.5f, d.Y + 0.5f); }
+                        }
+                        break;
+                    case DoorState.Closing:
+                        if (DoorOccupied(d)) { d.State = DoorState.Opening; Audio.PlayAt(Sfx.DoorOpen, d.X + 0.5f, d.Y + 0.5f); break; }
+                        d.Open -= dt * 1.6f;
+                        if (d.Open <= 0) { d.Open = 0; d.State = DoorState.Closed; }
+                        break;
+                }
+            }
+        }
+
+        void Push(PushWall p, int dx, int dy)
+        {
+            if (p.Active || p.Done) return;
+            int nx = p.X + dx, ny = p.Y + dy;
+            if (!Map.In(nx, ny) || Map.Kind[ny * Map.W + nx] != CellKind.Empty || CellHasSolid(nx, ny)) return;
+            p.Active = true;
+            p.DX = dx; p.DY = dy;
+            int ni = ny * Map.W + nx;
+            Map.Kind[ni] = CellKind.Push;
+            Map.DoorIdx[ni] = Map.DoorIdx[p.Y * Map.W + p.X];
+            Map.WallTex[ni] = (byte)p.Texture;
+            Audio.PlayAt(Sfx.PushWall, p.X + 0.5f, p.Y + 0.5f);
+            if (!p.Counted)
+            {
+                p.Counted = true;
+                Secrets++;
+                Message("A SECRET IS REVEALED!", Col.Rgb(120, 255, 120));
+                Audio.Play(Sfx.Secret, 0.7f, 0, 1, 0);
+            }
+        }
+
+        bool CellHasSolid(int cx, int cy)
+        {
+            if (Overlaps(P, cx, cy)) return true;
+            foreach (var a in Actors) if (a.Solid && Overlaps(a, cx, cy)) return true;
+            return false;
+        }
+
+        void UpdatePushWalls(float dt)
+        {
+            foreach (var p in Map.PushWalls)
+            {
+                if (!p.Active) continue;
+                p.Offset += dt * 1.0f;
+                if (p.Offset < 1) continue;
+                // arrived in the next cell
+                int oi = p.Y * Map.W + p.X;
+                Map.Kind[oi] = CellKind.Empty;
+                Map.WallTex[oi] = 0;
+                Map.DoorIdx[oi] = -1;
+                p.X += p.DX; p.Y += p.DY;
+                p.Offset = 0;
+                p.Moved++;
+                int nx = p.X + p.DX, ny = p.Y + p.DY;
+                bool more = p.Moved < 2 && Map.In(nx, ny) && Map.Kind[ny * Map.W + nx] == CellKind.Empty && !CellHasSolid(nx, ny);
+                if (more)
+                {
+                    int ni = ny * Map.W + nx;
+                    Map.Kind[ni] = CellKind.Push;
+                    Map.DoorIdx[ni] = Map.DoorIdx[p.Y * Map.W + p.X];
+                    Map.WallTex[ni] = (byte)p.Texture;
+                }
+                else
+                {
+                    p.Active = false;
+                    p.Done = true;
+                }
+            }
+        }
+
+        // ------------------------------------------------------------ using things
+
+        /// <summary>Finds the first non-empty cell in front of the player within reach.</summary>
+        bool UseTarget(out int cx, out int cy)
+        {
+            float dx = (float)Math.Cos(P.Angle), dy = (float)Math.Sin(P.Angle);
+            int sx = (int)P.X, sy = (int)P.Y;
+            for (float t = 0.1f; t < 1.35f; t += 0.05f)
+            {
+                cx = (int)(P.X + dx * t); cy = (int)(P.Y + dy * t);
+                if (cx == sx && cy == sy) continue;
+                if (Map.KindAt(cx, cy) != CellKind.Empty) return true;
+            }
+            cx = cy = -1;
+            return false;
+        }
+
+        public void PlayerUse(Player p)
+        {
+            int cx, cy;
+            if (!UseTarget(out cx, out cy)) return;
+            var k = Map.KindAt(cx, cy);
+            if (k == CellKind.Door) { OpenDoor(Map.DoorAt(cx, cy), true); return; }
+            if (k == CellKind.Push)
+            {
+                var pw = Map.PushAt(cx, cy);
+                float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+                if (Math.Abs(dx) > Math.Abs(dy)) Push(pw, Math.Sign(dx), 0); else Push(pw, 0, Math.Sign(dy));
+                return;
+            }
+            int i = cy * Map.W + cx;
+            if (k == CellKind.Wall && Map.WallTex[i] == Tex.EXIT_OFF && !ExitTriggered)
+            {
+                Map.WallTex[i] = Tex.EXIT_ON;
+                Audio.Play(Sfx.Switch);
+                ExitTriggered = true;
+                exitTimer = 1.2f;
+            }
+        }
+
+        void UpdateHint()
+        {
+            Hint = null;
+            if (P.Dead || ExitTriggered) return;
+            int cx, cy;
+            if (!UseTarget(out cx, out cy)) return;
+            var k = Map.KindAt(cx, cy);
+            if (k == CellKind.Door)
+            {
+                var d = Map.DoorAt(cx, cy);
+                if (d.State == DoorState.Opening || d.State == DoorState.Open) return;
+                if (d.Key != 0 && !P.Keys[d.Key])
+                {
+                    string[] names = { "", "RED", "BLUE", "YELLOW" };
+                    int[] cols = { 0, Col.Rgb(255, 80, 60), Col.Rgb(90, 150, 255), Col.Rgb(255, 220, 60) };
+                    Hint = "LOCKED - NEEDS " + names[d.Key] + " KEYCARD";
+                    HintColor = cols[d.Key];
+                }
+                else { Hint = "[E] OPEN DOOR"; HintColor = Col.Rgb(240, 230, 200); }
+            }
+            else if (k == CellKind.Wall && Map.WallTex[cy * Map.W + cx] == Tex.EXIT_OFF)
+            {
+                Hint = "[E] EXIT LEVEL"; HintColor = Col.Rgb(120, 255, 120);
+            }
+        }
+
+        // ------------------------------------------------------------ combat
+
+        /// <summary>Wakes up monsters that can hear a noise at (x, y): sound flows through open space and open doors.</summary>
+        public void Noise(float x, float y)
+        {
+            if (noiseTimer > 0) return;
+            noiseTimer = 0.25f;
+            int w = Map.W;
+            var dist = new Dictionary<int, int>();
+            var q = new Queue<int>();
+            int s = (int)y * w + (int)x;
+            dist[s] = 0;
+            q.Enqueue(s);
+            while (q.Count > 0)
+            {
+                int c = q.Dequeue();
+                int d = dist[c];
+                if (d >= 22) continue;
+                int cx = c % w, cy = c / w;
+                for (int k = 0; k < 8; k += 2)
+                {
+                    int nx = cx + Map.DX8[k], ny = cy + Map.DY8[k];
+                    if (!Map.In(nx, ny)) continue;
+                    int j = ny * w + nx;
+                    if (dist.ContainsKey(j)) continue;
+                    var kind = Map.Kind[j];
+                    if (kind == CellKind.Wall || kind == CellKind.Push) continue;
+                    if (kind == CellKind.Door && Map.Doors[Map.DoorIdx[j]].Open < 0.3f) continue;
+                    dist[j] = d + 1;
+                    q.Enqueue(j);
+                }
+            }
+            foreach (var a in Actors)
+            {
+                var m = a as Monster;
+                if (m == null || m.State != MState.Idle || m.Ambush) continue;
+                if (dist.ContainsKey((int)m.Y * w + (int)m.X)) m.Alert(this);
+            }
+        }
+
+        public void PlayerFire(Player p, WeaponDef d, float refire)
+        {
+            float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+            if (d.Melee)
+            {
+                Actor best = null;
+                float bestD = 1.25f;
+                foreach (var a in Actors)
+                {
+                    if (!a.Shootable) continue;
+                    float ox = a.X - p.X, oy = a.Y - p.Y;
+                    float t = ox * dx + oy * dy;
+                    if (t <= 0) continue;
+                    float dd = (float)Math.Sqrt(ox * ox + oy * oy) - a.Radius;
+                    if (dd > bestD) continue;
+                    float perp = Math.Abs(ox * dy - oy * dx);
+                    if (perp > a.Radius + 0.25f) continue;
+                    best = a; bestD = dd;
+                }
+                if (best != null)
+                {
+                    Audio.Play(Sfx.Punch, 0.9f, 0, 1, 0);
+                    best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1), p, false);
+                    if (best.Kind == ActorKind.Monster) SpawnBlood(best.X - dx * best.Radius, best.Y - dy * best.Radius, 0.5f, 3);
+                }
+                else Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
+                return;
+            }
+
+            Audio.Play(d.Sound, 0.9f, 0, 1, 0);
+            Noise(p.X, p.Y);
+            if (d.Rocket)
+            {
+                // the rocket leaves along the look direction, including up / down
+                const float speed = 15;
+                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, 1);
+                pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
+                pr.SplashDamage = 128; pr.SplashRadius = 2.7f;
+                pr.Z = p.EyeZ - 0.12f + p.AimSlope * 0.35f;
+                pr.VZ = p.AimSlope * speed;
+                Add(pr);
+                return;
+            }
+            float spread = d.Pellets > 1 ? d.Spread : (refire > 0 ? d.Spread : d.Spread * 0.25f);
+            for (int i = 0; i < d.Pellets; i++)
+            {
+                float a = p.Angle + (float)((Rng.NextDouble() - 0.5) * 2 * spread);
+                float slope = p.AimSlope + (float)((Rng.NextDouble() - 0.5) * spread);
+                Hitscan(p.X, p.Y, p.EyeZ, a, slope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p);
+            }
+        }
+
+        /// <summary>
+        /// A bullet from (x, y, z) along a horizontal angle and a vertical slope (height change per unit of distance).
+        /// It stops at the first wall, floor, ceiling or body in its way.
+        /// </summary>
+        void Hitscan(float x, float y, float z, float ang, float slope, float range, int dmg, Actor source)
+        {
+            float dx = (float)Math.Cos(ang), dy = (float)Math.Sin(ang);
+            float wall = Map.RayCast(x, y, dx, dy, range);
+            float best = wall;
+            bool overWall = false;
+            // floor / ceiling in the way?
+            if (slope < -0.001f) best = Math.Min(best, z / -slope);
+            else if (slope > 0.001f)
+            {
+                float tc = (1 - z) / slope;
+                if (tc < best)
+                {
+                    float cxp = x + dx * tc, cyp = y + dy * tc;
+                    if (!Map.IsOutdoor((int)cxp, (int)cyp)) best = tc;
+                    else
+                    {
+                        // under the open sky the shot can sail over walls lower than it
+                        int wx = (int)(x + dx * (wall + 0.01f)), wy = (int)(y + dy * (wall + 0.01f));
+                        float wh = Map.In(wx, wy) ? Math.Max(1, Map.WallHeight[wy * Map.W + wx]) : 2;
+                        if (z + slope * wall > wh) { overWall = true; best = range; }
+                    }
+                }
+            }
+            Actor hit = null;
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable || a == source) continue;
+                float ox = a.X - x, oy = a.Y - y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0 || t > best + a.Radius) continue;
+                float perp2 = ox * ox + oy * oy - t * t;
+                float r = a.Radius + 0.06f;
+                if (perp2 > r * r) continue;
+                float th = t - (float)Math.Sqrt(r * r - perp2);
+                if (th >= best) continue;
+                // is the bullet at the right height when it reaches the body? (a little forgiveness at low resolution)
+                float zt = z + slope * th, zt2 = z + slope * t;
+                float lo = a.Z - 0.06f, hi = a.Z + a.Height + 0.06f;
+                if ((zt < lo && zt2 < lo) || (zt > hi && zt2 > hi)) continue;
+                best = th; hit = a;
+            }
+            float hz = Math.Max(0.02f, Math.Min(0.98f, z + slope * best));
+            if (hit != null)
+            {
+                hit.Damage(this, dmg, source, false);
+                if (hit.Kind == ActorKind.Monster) SpawnBlood(x + dx * best, y + dy * best, hz - 0.05f, 2);
+                else SpawnPuff(x + dx * (best - 0.05f), y + dy * (best - 0.05f), hz);
+            }
+            else if (!overWall && best < range) SpawnPuff(x + dx * (best - 0.06f), y + dy * (best - 0.06f), hz);
+        }
+
+        void SpawnPuff(float x, float y, float z)
+        {
+            // Z of an effect is the bottom of its sprite; the puff is about 0.2 tall
+            var e = new Effect(Art.Puff, x, y, Math.Max(0, z - 0.1f), 0.3f);
+            e.VZ = 0.4f;
+            e.Scale = 1f / 48;
+            Add(e);
+        }
+
+        public void SpawnPuffNear(float px, float py, float ang)
+        {
+            float a = ang + (float)((Rng.NextDouble() - 0.5) * 0.3);
+            float dx = (float)Math.Cos(a), dy = (float)Math.Sin(a);
+            float t = Map.RayCast(px, py, dx, dy, 12);
+            if (t < 12) SpawnPuff(px + dx * (t - 0.06f), py + dy * (t - 0.06f), 0.35f + (float)Rng.NextDouble() * 0.3f);
+        }
+
+        void SpawnBlood(float x, float y, float z, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                var e = new Effect(Art.Blood, x, y, z, 0.45f + (float)Rng.NextDouble() * 0.2f);
+                e.VX = (float)(Rng.NextDouble() - 0.5) * 1.5f;
+                e.VY = (float)(Rng.NextDouble() - 0.5) * 1.5f;
+                e.VZ = 0.5f + (float)Rng.NextDouble();
+                e.Gravity = 5;
+                e.Scale = 1f / 56;
+                Add(e);
+            }
+        }
+
+        public Actor ProjectileHit(Projectile pr)
+        {
+            float cz = pr.Z + 0.1f;
+            if (pr.Owner != P && !P.Dead && cz < 0.8f)
+            {
+                float rr = pr.Radius + P.Radius;
+                if ((pr.X - P.X) * (pr.X - P.X) + (pr.Y - P.Y) * (pr.Y - P.Y) < rr * rr) return P;
+            }
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable || a == pr.Owner) continue;
+                if (cz < a.Z - 0.1f || cz > a.Z + a.Height + 0.1f) continue;
+                float rr = pr.Radius + a.Radius;
+                if ((pr.X - a.X) * (pr.X - a.X) + (pr.Y - a.Y) * (pr.Y - a.Y) < rr * rr) return a;
+            }
+            return null;
+        }
+
+        public void Explode(float x, float y, float z, float damage, float radius, Actor source)
+        {
+            var e = new Effect(Art.Explosion, x, y, Math.Max(0, z - 0.45f), 0.6f);
+            e.Scale = 1f / 38;
+            e.Glow = true;
+            e.Light = 4.2f;
+            Add(e);
+            Audio.PlayAt(Sfx.Explode, x, y, 1.2f, 0);
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable) continue;
+                float d = a.DistTo(x, y) - a.Radius;
+                if (d < 0) d = 0;
+                if (d >= radius || !Map.LOS(x, y, a.X, a.Y)) continue;
+                a.Damage(this, damage * (1 - d / radius), source, true);
+            }
+            if (!P.Dead)
+            {
+                float d = P.DistTo(x, y) - P.Radius;
+                if (d < 0) d = 0;
+                if (d < radius && Map.LOS(x, y, P.X, P.Y))
+                {
+                    float f = 1 - d / radius;
+                    P.Hurt(this, damage * f * (source == P ? 0.75f : 1f), x, y);
+                    float dist = Math.Max(0.1f, P.DistTo(x, y));
+                    P.VX += (P.X - x) / dist * 6 * f; P.VY += (P.Y - y) / dist * 6 * f;
+                }
+                float sd = P.DistTo(x, y);
+                Shake(Math.Min(1, 3.5f / (1 + sd * sd * 0.25f)));
+            }
+            Noise(x, y);
+        }
+
+        public void CheckPickups(Player p)
+        {
+            foreach (var a in Actors)
+            {
+                if (a.Kind != ActorKind.Item || a.Remove) continue;
+                float rr = p.Radius + 0.32f;
+                float dx = a.X - p.X, dy = a.Y - p.Y;
+                if (dx * dx + dy * dy > rr * rr) continue;
+                var it = (Item)a;
+                if (p.Give(this, it.Code, it.Dropped))
+                {
+                    a.Remove = true;
+                    if (!it.Dropped) ItemsTaken++;
+                }
+            }
+        }
+
+        public void BossKilled()
+        {
+            BossDead = true;
+            Message("THE WARDEN HAS FALLEN! TAKE ITS KEY.", Col.Rgb(255, 220, 90));
+            Shake(1.2f);
+        }
+    }
+}

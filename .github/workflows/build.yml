@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with the .NET Framework C# compiler
+        shell: powershell
+        run: .\build.ps1
+
+      - name: Check that every level can be completed
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-check
+          if ($LASTEXITCODE -ne 0) { throw "level check failed" }
+
+      - name: Soak test (random bot plays every level)
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-soak
+          if ($LASTEXITCODE -ne 0) { throw "soak test failed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TerminalHell
+          path: bin/TerminalHell.exe
