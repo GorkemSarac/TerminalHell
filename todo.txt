@@ -1,3 +1,4 @@
+irm https://raw.githubusercontent.com/GorkemSarac/TerminalHell/main/install.ps1 | iex
 ///////////////to add:
 
 Score for each level

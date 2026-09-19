@@ -3,7 +3,7 @@
 
         powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\TerminalHell\uninstall.ps1"
     or
-        irm https://raw.githubusercontent.com/YOUR_GITHUB_NAME/TerminalHell/main/uninstall.ps1 | iex
+        irm https://raw.githubusercontent.com/GorkemSarac/TerminalHell/main/uninstall.ps1 | iex
 
     Removes the game, its PATH entry, the Start menu shortcut and the saved settings.
 #>

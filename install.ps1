@@ -2,10 +2,10 @@
     TERMINAL HELL - one-line installer
 
     PowerShell:
-        irm https://raw.githubusercontent.com/YOUR_GITHUB_NAME/TerminalHell/main/install.ps1 | iex
+        irm https://raw.githubusercontent.com/GorkemSarac/TerminalHell/main/install.ps1 | iex
 
     Command Prompt (cmd.exe):
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/YOUR_GITHUB_NAME/TerminalHell/main/install.ps1 | iex"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/GorkemSarac/TerminalHell/main/install.ps1 | iex"
 
     What it does:
       1. downloads the source code of the repository below
@@ -16,7 +16,7 @@
 #>
 & {
     $ErrorActionPreference = 'Stop'
-    $Repo = 'YOUR_GITHUB_NAME/TerminalHell'      # GitHub "owner/repository" (change with tools\set-repo.ps1)
+    $Repo = 'GorkemSarac/TerminalHell'      # GitHub "owner/repository" (change with tools\set-repo.ps1)
     $Branch = 'main'
     $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\TerminalHell'
 
