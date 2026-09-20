@@ -211,6 +211,54 @@ namespace TerminalHell
             Normalize(b, 0.5f);
             bank[(int)Sfx.DryFire] = b;
 
+            // the ray gun: a rising whine that snaps into a discharge
+            b = Buf(0.6f);
+            {
+                var f = new Svf();
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    float ph = 2 * (float)Math.PI * (220 + 900 * t) * t;
+                    float tone = (float)(Math.Sin(ph) + 0.5 * Math.Sin(ph * 1.5 + Math.Sin(ph * 0.5)));
+                    float body = f.Process(Rnd() * 0.6f + tone, 900 + 2600 * Math.Min(1, t / 0.12f), 0.6f, 1);
+                    b[i] = body * Env(t, 0.004f, 0.11f);
+                }
+                Thump(b, 0.01f, 0.7f, 150, 40, 0.05f, 0.22f);
+                for (int i = 0; i < b.Length; i++) b[i] = Dist(b[i], 2.0f);
+                Normalize(b, 0.8f);
+            }
+            bank[(int)Sfx.RayGun] = b;
+
+            // parry: a hard metal clang with a short ring
+            b = Buf(0.5f);
+            {
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    float ring = 0;
+                    float[] partials = { 1840, 2790, 3960, 5210 };
+                    for (int k = 0; k < partials.Length; k++)
+                        ring += (float)Math.Sin(2 * Math.PI * partials[k] * t) * (float)Math.Exp(-t / (0.09f - k * 0.015f)) / (k + 1);
+                    b[i] = ring * 0.6f;
+                }
+                NoiseBurst(b, 0, 0.8f, 6000, 1800, 0.0005f, 0.012f, 0.06f);
+                Thump(b, 0, 0.5f, 260, 90, 0.02f, 0.08f);
+                Normalize(b, 0.8f);
+            }
+            bank[(int)Sfx.Parry] = b;
+
+            // jump and landing: cloth and boots, no voice
+            b = Buf(0.3f);
+            NoiseBurst(b, 0, 0.5f, 900, 2600, 0.02f, 0.06f, 0.25f);
+            Normalize(b, 0.35f);
+            bank[(int)Sfx.Jump] = b;
+
+            b = Buf(0.25f);
+            Thump(b, 0, 0.9f, 120, 45, 0.01f, 0.09f);
+            NoiseBurst(b, 0, 0.5f, 1800, 500, 0.001f, 0.03f, 0.12f);
+            Normalize(b, 0.5f);
+            bank[(int)Sfx.Land] = b;
+
             b = Buf(0.45f);
             NoiseBurst(b, 0, 0.5f, 2500, 1500, 0.001f, 0.01f, 0.04f);
             NoiseBurst(b, 0.18f, 0.6f, 1800, 900, 0.001f, 0.02f, 0.06f);

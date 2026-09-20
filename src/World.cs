@@ -117,7 +117,7 @@ namespace TerminalHell
             var it = new Item(c, x, y);
             it.Dropped = dropped;
             // weapons left in the level stand on a lit pedestal, so they read as something worth walking to
-            if (!dropped && (c == 'S' || c == 'N' || c == 'L'))
+            if (!dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W'))
             {
                 const float PedestalScale = 1f / 52;
                 var ped = new Decor(Art.Pedestal, x, y, false, 0.3f);
@@ -496,32 +496,24 @@ namespace TerminalHell
             float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
             if (d.Melee)
             {
-                Actor best = null;
-                float bestD = 1.25f;
-                foreach (var a in Actors)
-                {
-                    if (!a.Shootable) continue;
-                    float ox = a.X - p.X, oy = a.Y - p.Y;
-                    float t = ox * dx + oy * dy;
-                    if (t <= 0) continue;
-                    float dd = (float)Math.Sqrt(ox * ox + oy * oy) - a.Radius;
-                    if (dd > bestD) continue;
-                    float perp = Math.Abs(ox * dy - oy * dx);
-                    if (perp > a.Radius + 0.25f) continue;
-                    best = a; bestD = dd;
-                }
-                if (best != null)
-                {
-                    Audio.Play(Sfx.Punch, 0.9f, 0, 1, 0);
-                    best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1), p, false);
-                    if (best.Kind == ActorKind.Monster) SpawnBlood(best.X - dx * best.Radius, best.Y - dy * best.Radius, 0.5f, 3);
-                }
-                else Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
+                MeleeSwing(p, d, 1f);
                 return;
             }
 
             Audio.Play(d.Sound, 0.9f, 0, 1, 0);
             Noise(p.X, p.Y);
+            if (d.Ray)
+            {
+                // a bolt of whatever the ray gun keeps inside it: fast, heavy, and it burns what it touches
+                const float speed = 20;
+                var bolt = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.RAY);
+                bolt.DmgMin = d.DmgMin; bolt.DmgMax = d.DmgMax;
+                bolt.SplashDamage = 45; bolt.SplashRadius = 1.6f;
+                bolt.Z = p.EyeZ - 0.1f + p.AimSlope * 0.35f;
+                bolt.VZ = p.AimSlope * speed;
+                Add(bolt);
+                return;
+            }
             if (d.Rocket)
             {
                 // the rocket leaves along the look direction, including up / down
@@ -599,7 +591,7 @@ namespace TerminalHell
             else if (!overWall && best < range) SpawnPuff(x + dx * (best - 0.06f), y + dy * (best - 0.06f), hz);
         }
 
-        void SpawnPuff(float x, float y, float z)
+        public void SpawnPuff(float x, float y, float z)
         {
             // Z of an effect is the bottom of its sprite; the puff is about 0.2 tall
             var e = new Effect(Art.Puff, x, y, Math.Max(0, z - 0.1f), 0.3f);
@@ -681,6 +673,57 @@ namespace TerminalHell
             Noise(x, y);
         }
 
+        /// <summary>A punch: hits the first thing within reach in front of the player.</summary>
+        public bool MeleeSwing(Player p, WeaponDef d, float damageMul)
+        {
+            float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+            Actor best = null;
+            float bestD = 1.25f;
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable) continue;
+                float ox = a.X - p.X, oy = a.Y - p.Y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0) continue;
+                float dd = (float)Math.Sqrt(ox * ox + oy * oy) - a.Radius;
+                if (dd > bestD) continue;
+                float perp = Math.Abs(ox * dy - oy * dx);
+                if (perp > a.Radius + 0.25f) continue;
+                best = a; bestD = dd;
+            }
+            if (best != null)
+            {
+                Audio.Play(Sfx.Punch, 0.9f, 0, 1, 0);
+                best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1) * damageMul, p, false);
+                if (best.Kind == ActorKind.Monster) SpawnBlood(best.X - dx * best.Radius, best.Y - dy * best.Radius, 0.5f, 3);
+                return true;
+            }
+            Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
+            return false;
+        }
+
+        /// <summary>The right-button jab: weaker than a committed punch, but it is what parries projectiles.</summary>
+        public void PlayerPunch(Player p)
+        {
+            MeleeSwing(p, WeaponDef.All[0], 0.6f);
+        }
+
+        /// <summary>A projectile flying into the player's outstretched fist is knocked back at whoever fired it.</summary>
+        public bool TryParry(Projectile pr)
+        {
+            if (P.ParryTime <= 0 || P.Dead || pr.Owner == (Actor)P) return false;
+            float dx = pr.X - P.X, dy = pr.Y - P.Y;
+            float d2 = dx * dx + dy * dy;
+            if (d2 > 1.4f * 1.4f) return false;
+            float dz = pr.Z - (P.EyeZ - 0.15f);
+            if (dz > 0.8f || dz < -0.8f) return false;
+            // it has to come at the fist, not at your back
+            float dist = (float)Math.Sqrt(Math.Max(1e-4f, d2));
+            if ((dx * (float)Math.Cos(P.Angle) + dy * (float)Math.Sin(P.Angle)) / dist < 0.3f) return false;
+            pr.Parried(this, P);
+            return true;
+        }
+
         public void CheckPickups(Player p)
         {
             foreach (var a in Actors)
@@ -703,7 +746,8 @@ namespace TerminalHell
         {
             switch (code)
             {
-                case 'S': case 'N': case 'L': return 500;                  // shotgun, minigun, rocket launcher
+                case 'S': case 'N': case 'L': case 'W': return 500;        // the weapons
+                case 'w': return 60;                                       // soul cells (secret rooms only)
                 case 'r': case 'b': case 'y': return 200;                  // keycards
                 case 'o': case 'U': return 300;                            // soul orb, mega armor
                 case 'G': return 150;                                      // combat armor

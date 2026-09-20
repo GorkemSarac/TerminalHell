@@ -1,4 +1,4 @@
-// TERMINAL HELL - everything that lives in the world: monsters, items, decorations, projectiles, effects.
+﻿// TERMINAL HELL - everything that lives in the world: monsters, items, decorations, projectiles, effects.
 using System;
 
 namespace TerminalHell
@@ -48,6 +48,8 @@ namespace TerminalHell
         public char Drop;
         public float Scale = 1f / 64;
         public int Score = 100;     // points for killing one
+        public int ProjType = Projectile.FIREBALL;
+        public float DropChance = 0.5f;
         public Image[] Frames;
         public float MeleeChance;   // chance a ranged monster claws when close
         public bool Boss;
@@ -67,8 +69,10 @@ namespace TerminalHell
         {
             Ghoul = new MonsterDef
             {
-                Name = "GHOUL", Code = 'z', Health = 30, Speed = 1.35f, Radius = 0.3f, PainChance = 0.7f, Attack = AttackType.Hitscan,
-                Range = 16, WindUp = 0.65f, CoolMin = 2.0f, CoolMax = 3.8f, DmgMin = 3, DmgMax = 10, Shots = 1,
+                // fires a small, fast round: dodgeable if you are moving, and it can be parried
+                Name = "GHOUL", Code = 'z', Health = 30, Speed = 1.35f, Radius = 0.3f, PainChance = 0.7f, Attack = AttackType.Projectile,
+                ProjType = Projectile.BULLET, ProjSpeed = 13f,
+                Range = 16, WindUp = 0.65f, CoolMin = 2.3f, CoolMax = 4.2f, DmgMin = 5, DmgMax = 12, Shots = 1,
                 Sight = Sfx.GhoulSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.GhoulShot, Drop = 'c', Frames = Art.Ghoul, Score = 100,
             };
             Fiend = new MonsterDef
@@ -88,7 +92,7 @@ namespace TerminalHell
                 Name = "WARDEN", Code = 'K', Health = 1400, Speed = 1.3f, Radius = 0.62f, PainChance = 0.08f, Attack = AttackType.Rockets,
                 Range = 30, WindUp = 0.9f, CoolMin = 1.8f, CoolMax = 3.0f, DmgMin = 30, DmgMax = 60, Shots = 2, ProjSpeed = 9,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.Rocket, Frames = Art.Warden,
-                Scale = 1f / 58, Boss = true, Drop = 'y', Score = 5000,
+                Scale = 1f / 58, Boss = true, Drop = 'y', DropChance = 1f, Score = 5000,   // the key it carries always drops
             };
             Ghoul.MeasureHeight(); Fiend.MeasureHeight(); Brute.MeasureHeight(); Warden.MeasureHeight();
         }
@@ -191,7 +195,8 @@ namespace TerminalHell
             Audio.PlayAt(Def.Death, X, Y, Def.Boss ? 2f : 1f, Tag);
             w.Kills++;
             w.Score += Def.Score;
-            if (Def.Drop != '\0') w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
+            // not every corpse leaves something behind: ammo is meant to be worth looking for
+            if (Def.Drop != '\0' && w.Rng.NextDouble() < Def.DropChance) w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
             if (Def.Boss) w.BossKilled();
         }
 
@@ -409,10 +414,12 @@ namespace TerminalHell
             }
             else
             {
-                float spread = (float)(w.Rng.NextDouble() - 0.5) * 0.08f;
+                float spread = (float)(w.Rng.NextDouble() - 0.5) * (Def.ProjType == Projectile.BULLET ? 0.05f : 0.08f);
+                int ptype = Def.Attack == AttackType.Rockets ? Projectile.ROCKET : Def.ProjType;
                 var pr = new Projectile(this, X + (float)Math.Cos(ang) * (Radius + 0.1f), Y + (float)Math.Sin(ang) * (Radius + 0.1f), ang + spread,
-                    Def.ProjSpeed * w.ProjSpeedMul, Def.Attack == AttackType.Rockets ? 1 : 0);
+                    Def.ProjSpeed * w.ProjSpeedMul, ptype);
                 pr.DmgMin = Def.DmgMin; pr.DmgMax = Def.DmgMax;
+                if (ptype == Projectile.BULLET) pr.Z = Math.Max(0.25f, Def.Height * 0.72f);   // out of the rifle, roughly chest high
                 if (Def.Boss) { pr.Z = 0.55f; pr.SplashDamage = 60; pr.SplashRadius = 2.2f; }
                 w.Add(pr);
             }
@@ -440,11 +447,11 @@ namespace TerminalHell
         {
             switch (c)
             {
-                case 'S': case 'N': case 'L': return 0.30f;                        // weapons (they sit on a pedestal)
-                case 'r': case 'b': case 'y': return 0.42f;                        // keycards
-                case 'o': case 'U': case 'G': return 0.58f;                        // soul orb and armour
-                case 'm': case 'C': case 'E': case 'Q': return 0.42f;              // the big boxes
-                default: return 0.34f;                                             // stimpacks, clips, shells, bonuses
+                case 'S': case 'N': case 'L': case 'W': return 0.24f;              // weapons (they sit on a pedestal)
+                case 'r': case 'b': case 'y': return 0.33f;                        // keycards
+                case 'o': case 'U': case 'G': return 0.45f;                        // soul orb and armour
+                case 'm': case 'C': case 'E': case 'Q': return 0.32f;              // the big boxes
+                default: return 0.25f;                                             // stimpacks, clips, shells, bonuses
             }
         }
 
@@ -527,9 +534,11 @@ namespace TerminalHell
 
     sealed class Projectile : Actor
     {
+        public const int FIREBALL = 0, ROCKET = 1, BULLET = 2, RAY = 3;
+
         public Actor Owner;
         public float VX, VY, VZ;  // VZ: climb rate (the player's rockets follow the look angle)
-        public int Type;          // 0 fireball, 1 rocket
+        public int Type;
         public int DmgMin = 8, DmgMax = 20;
         public float SplashDamage, SplashRadius;
         float life = 8;
@@ -539,14 +548,20 @@ namespace TerminalHell
             Kind = ActorKind.Projectile;
             Owner = owner; X = x; Y = y; Type = type;
             VX = (float)Math.Cos(angle) * speed; VY = (float)Math.Sin(angle) * speed;
-            Radius = 0.12f;
+            Radius = type == BULLET ? 0.08f : 0.12f;
             Z = 0.4f;
         }
 
         public override Image Sprite(World w)
         {
             int f = ((int)(w.Time * 12 + Tag)) & 1;
-            return Type == 0 ? Art.Fireball[f] : Art.Rocket[f];
+            switch (Type)
+            {
+                case ROCKET: return Art.Rocket[f];
+                case BULLET: return Art.Bullet[f];
+                case RAY: return Art.RayBolt[f];
+                default: return Art.Fireball[f];
+            }
         }
 
         public override bool Bright { get { return true; } }
@@ -575,12 +590,42 @@ namespace TerminalHell
                     Impact(w, null);
                     return;
                 }
+                if (w.TryParry(this)) return;
                 var hit = w.ProjectileHit(this);
                 if (hit != null) { Impact(w, hit); return; }
             }
-            if (Type == 1 && w.Rng.NextDouble() < 0.6)
+            if (Type == ROCKET && w.Rng.NextDouble() < 0.6)
                 w.Add(new Effect(Art.Puff, X - VX * 0.02f, Y - VY * 0.02f, Z + 0.02f, 0.3f));
-            w.AddLight(X, Y, Type == 0 ? 2.6f : 2.2f, 1.0f, 0.45f, 0.12f);
+            // (a bullet carries no light of its own: a moving light repaints half the screen for very little gain)
+            if (Type == RAY) w.AddLight(X, Y, 3.0f, 1.0f, 0.25f, 0.75f);
+            else if (Type == BULLET) { }
+            else w.AddLight(X, Y, Type == FIREBALL ? 2.6f : 2.2f, 1.0f, 0.45f, 0.12f);
+        }
+
+        /// <summary>Knocked back by the player's fist: it flies home, faster and angrier.</summary>
+        public void Parried(World w, Player p)
+        {
+            float speed = (float)Math.Sqrt(VX * VX + VY * VY) * 1.4f;
+            float ang = p.Angle;
+            VX = (float)Math.Cos(ang) * speed;
+            VY = (float)Math.Sin(ang) * speed;
+            VZ = p.AimSlope * speed * 0.5f;
+            Owner = p;
+            DmgMin = (int)(DmgMin * 1.5f);
+            DmgMax = (int)(DmgMax * 1.5f);
+            SplashDamage *= 1.3f;
+            life = Math.Max(life, 3);
+            Audio.Play(Sfx.Parry, 0.9f, 0, 1, 0);
+            p.ShakeAmt = Math.Min(1, p.ShakeAmt + 0.22f);
+            p.GrinTime = 1.2f;
+            w.Score += 50;
+            w.AddLight(X, Y, 3.2f, 1f, 0.9f, 0.55f);
+            var e = new Effect(Art.Explosion, X, Y, Z, 0.22f);
+            e.Scale = 1f / 150;
+            e.Glow = true;
+            e.Light = 1.6f;
+            w.Add(e);
+            w.Message("PARRY!", Col.Rgb(255, 230, 140));
         }
 
         void Impact(World w, Actor hit)
@@ -592,7 +637,12 @@ namespace TerminalHell
                 if (hit == (Actor)w.P) w.P.Hurt(w, dmg, X - VX, Y - VY);
                 else hit.Damage(w, dmg, Owner, false);
             }
-            if (Type == 1 || SplashRadius > 0)
+            if (Type == BULLET)
+            {
+                w.SpawnPuff(X, Y, Z);
+                Audio.PlayAt(Sfx.FireHit, X, Y, 0.3f, 0);
+            }
+            else if (Type == ROCKET || SplashRadius > 0)
             {
                 w.Explode(X, Y, Z, SplashDamage > 0 ? SplashDamage : 100, SplashRadius > 0 ? SplashRadius : 2.6f, Owner);
             }

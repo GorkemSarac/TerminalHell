@@ -101,7 +101,7 @@ namespace TerminalHell
             Center(s, xs[1], widths[1], y + 3, "HEALTH", Label, Panel);
 
             // arms
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < Player.Weapons; i++)
             {
                 int ax = xs[2] + 1 + (i % 3) * 3, ay = y + i / 3;
                 int fg = p.Has[i] ? Yellow : Gray;
@@ -133,15 +133,20 @@ namespace TerminalHell
 
             if (table)
             {
-                for (int a = 0; a < 3; a++)
+                // one line per ammo type: the last one only once the ray gun turns up
+                for (int a = 0; a < Player.AmmoTypes; a++)
                 {
+                    if (a == 3 && !p.Has[5] && p.Ammo[3] == 0)
+                    {
+                        int kills = w.TotalKills > 0 ? w.Kills * 100 / w.TotalKills : 100;
+                        s.Print(xs[6] + 1, y + a, "KILLS " + Pad(kills, 3) + "%", Label, Panel);
+                        break;
+                    }
                     bool cur = d.Ammo == a;
                     int fg = cur ? Yellow : Label;
                     string line = Player.AmmoNames[a] + " " + Pad(p.Ammo[a], 3) + "/" + Pad(Player.MaxAmmo[a], 3);
                     s.Print(xs[6] + 1, y + a, line, fg, Panel);
                 }
-                int kills = w.TotalKills > 0 ? w.Kills * 100 / w.TotalKills : 100;
-                s.Print(xs[6] + 1, y + 3, "KILLS " + Pad(kills, 3) + "%", Label, Panel);
             }
         }
 

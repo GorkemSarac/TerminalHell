@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -151,31 +151,34 @@ namespace TerminalHell
                     return 0;
                 case "--dev-weapons":
                     {
-                        // each weapon at rest, firing, and mid-animation, drawn exactly as in game (136x84 view)
-                        float[] times = { 9, 0.01f, 0.05f, 0.2f, 0.5f };
+                        // each weapon at rest, firing, mid-animation, and mid-parry, drawn exactly as in game (136x84 view)
+                        float[] times = { 9, 0.01f, 0.05f, 0.2f, 0.5f, 9 };
+                        float[] punch = { 9, 9, 9, 9, 9, 0.12f };
                         const int vw = 136, vh = 84;
-                        var sheet = new int[vw * 5 * vh * 5];
+                        var sheet = new int[vw * times.Length * vh * Player.Weapons];
                         var scr = new Screen();
                         scr.Resize(vw, vh / 2);
                         var p = new Player();
-                        for (int w = 0; w < 5; w++)
+                        for (int w = 0; w < Player.Weapons; w++)
                             for (int k = 0; k < times.Length; k++)
                             {
                                 for (int y = 0; y < vh; y++)
                                     for (int x = 0; x < vw; x++)
                                         scr.Pix[y * vw + x] = y < vh / 2 ? Col.Rgb(70, 66, 64) : Col.Rgb(96, 84, 70);
                                 p.Weapon = w; p.FireAnim = times[k];
+                                p.PunchAnim = punch[k];
+                                p.ParryTime = punch[k] < 1 ? 0.2f : 0;
                                 ViewModel.Draw(scr, vh, p, 1 / 60f, k * 0.37f, 1.11f, 1);
                                 for (int y = 0; y < vh; y++)
                                     for (int x = 0; x < vw; x++)
-                                        sheet[(w * vh + y) * vw * 5 + k * vw + x] = scr.Pix[y * vw + x];
+                                        sheet[(w * vh + y) * vw * times.Length + k * vw + x] = scr.Pix[y * vw + x];
                             }
-                        DebugTools.SavePng(sheet, vw * 5, vh * 5, a[1], 2);
+                        DebugTools.SavePng(sheet, vw * times.Length, vh * Player.Weapons, a[1], 2);
                         return 0;
                     }
                 case "--dev-frame":
                     {
-                        // --dev-frame out.png cols rows level x y angle [simSeconds] [hd|ascii] [weapon 0-4] [pitch]
+                        // --dev-frame out.png cols rows level x y angle [simSeconds] [hd|ascii] [weapon 0-5] [pitch]
                         var s = new Settings();
                         var g = new Game(s);
                         g.DebugFrame(int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]) - 1, float.Parse(a[5], inv), float.Parse(a[6], inv), float.Parse(a[7], inv),
@@ -347,6 +350,170 @@ namespace TerminalHell
                         Console.WriteLine("default volumes: sound " + s.SfxVolume + ", music " + s.MusicVolume);
                         return failures;
                     }
+                case "--dev-moves":
+                    {
+                        // the parry: a fireball thrown at the player either hits, or is knocked back at whoever threw it
+                        int bad = 0;
+                        for (int parry = 0; parry < 2; parry++)
+                        {
+                            var w = new World(Levels.All()[0], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);   // looking north
+                            // the thrower stands well back and keeps to itself: a brute never shoots, so only this one fireball is in play
+                            var thrower = new Monster(MonsterDef.Brute, 8.5f, 6.5f);
+                            w.Actors.Add(thrower);
+                            var shot = new Projectile(thrower, 8.5f, 11.0f, (float)(Math.PI / 2), 6, Projectile.FIREBALL);
+                            shot.DmgMin = 10; shot.DmgMax = 10;
+                            shot.Z = 0.45f;
+                            w.Add(shot);
+                            int hpBefore = w.P.HP;
+                            float throwerBefore = thrower.Health;
+                            var inp = new PlayerInput();
+                            for (int f = 0; f < 45; f++)
+                            {
+                                // punch when it is about a metre away
+                                inp.Parry = parry == 1 && Math.Abs(shot.Y - w.P.Y) < 1.2f && !shot.Remove;
+                                w.Update(1 / 30f, inp);
+                            }
+                            int hpLost = hpBefore - w.P.HP;
+                            float hurtBack = throwerBefore - thrower.Health;
+                            if (parry == 0)
+                            {
+                                Console.WriteLine("no parry: the player took " + hpLost + " damage, the thrower took " + hurtBack.ToString("0", inv));
+                                if (hpLost <= 0) { Console.WriteLine("  WRONG: the fireball should have hit the player"); bad++; }
+                            }
+                            else
+                            {
+                                Console.WriteLine("parried : the player took " + hpLost + " damage, the thrower took " + hurtBack.ToString("0", inv));
+                                if (hpLost > 0) { Console.WriteLine("  WRONG: a parried fireball should not hit the player"); bad++; }
+                                if (hurtBack <= 0) { Console.WriteLine("  WRONG: a parried fireball should come back at whoever threw it"); bad++; }
+                            }
+                        }
+
+                        // jumping: space lifts the player off the floor and gravity brings them back
+                        {
+                            var w = new World(Levels.All()[0], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            var inp = new PlayerInput();
+                            inp.Jump = true;
+                            w.Update(1 / 30f, inp);
+                            inp.Jump = false;
+                            float peak = 0;
+                            bool landed = false;
+                            for (int f = 0; f < 40; f++)
+                            {
+                                w.Update(1 / 30f, inp);
+                                peak = Math.Max(peak, w.P.Z);
+                                if (f > 5 && w.P.OnGround) { landed = true; break; }
+                            }
+                            Console.WriteLine("jump    : rose " + peak.ToString("0.00", inv) + " and " + (landed ? "landed again" : "never came down"));
+                            if (peak < 0.15f) { Console.WriteLine("  WRONG: a jump should lift the player off the floor"); bad++; }
+                            if (peak > Player.MaxJumpZ + 0.01f) { Console.WriteLine("  WRONG: a jump should never reach the ceiling"); bad++; }
+                            if (!landed) { Console.WriteLine("  WRONG: the player should come back down"); bad++; }
+                        }
+
+                        // lava burns underfoot, but not while you are in the air above it
+                        for (int air = 0; air < 2; air++)
+                        {
+                            var w = new World(Levels.All()[2], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 8.5f; w.P.Y = 22.5f;            // a lava tile in the west field of E1M3
+                            if (air == 1) { w.P.Z = 0.35f; w.P.OnGround = false; }
+                            int hpBefore = w.P.HP;
+                            var still = new PlayerInput();
+                            // three frames: long enough for a burn tick, short enough that gravity has not landed them yet
+                            for (int f = 0; f < 3; f++) w.Update(1 / 30f, still);
+                            int hpLost = hpBefore - w.P.HP;
+                            Console.WriteLine((air == 1 ? "in air  " : "standing") + ": lava did " + hpLost + " damage");
+                            if (air == 0 && hpLost <= 0) { Console.WriteLine("  WRONG: standing in lava should burn"); bad++; }
+                            if (air == 1 && hpLost > 0) { Console.WriteLine("  WRONG: lava should not reach a player in the air"); bad++; }
+                        }
+                        Console.WriteLine(bad == 0 ? "parry and jump behave" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-save":
+                    {
+                        // play the middle of a level, save it, load it back, and check that nothing changed
+                        SaveGame.PathOverride = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "terminalhell-savetest.txt");
+                        var s = new Settings();
+                        var levels = Levels.All();
+                        var w = new World(levels[1], s, null);
+                        w.P.Has[2] = w.P.Has[5] = true;
+                        w.P.Ammo[1] = 20; w.P.Ammo[3] = 15;
+                        var rng = new Random(11);
+                        var inp = new PlayerInput();
+                        for (int f = 0; f < 900; f++)
+                        {
+                            if (f % 15 == 0)
+                            {
+                                inp = new PlayerInput();
+                                inp.Forward = rng.Next(3) - 1; inp.Strafe = rng.Next(3) - 1;
+                                inp.Fire = rng.Next(3) == 0; inp.Run = rng.Next(2) == 0;
+                                inp.SelectSlot = rng.Next(10) == 0 ? rng.Next(1, Player.Weapons + 1) : 0;
+                            }
+                            inp.Turn = (float)(rng.NextDouble() - 0.5) * 0.2f;
+                            inp.Use = rng.Next(6) == 0;
+                            inp.Jump = rng.Next(30) == 0;
+                            inp.Parry = rng.Next(15) == 0;
+                            if (w.P.Dead) { w.P.Dead = false; w.P.HP = 100; }
+                            w.Update(1 / 30f, inp);
+                        }
+                        // open a door and push a secret wall, so both are saved part way through
+                        foreach (var d in w.Map.Doors) if (d.Key == 0) { w.OpenDoor(d, true); break; }
+                        foreach (var pw in w.Map.PushWalls)
+                        {
+                            for (int k = 0; k < 8; k += 2)
+                            {
+                                int ox = pw.X - Map.DX8[k], oy = pw.Y - Map.DY8[k];
+                                if (!w.Map.In(ox, oy) || w.Map.Kind[oy * w.Map.W + ox] != CellKind.Empty) continue;
+                                w.P.X = ox + 0.5f; w.P.Y = oy + 0.5f;
+                                w.P.Angle = (float)Math.Atan2(Map.DY8[k], Map.DX8[k]);
+                                var use = new PlayerInput(); use.Use = true;
+                                w.Update(1 / 30f, use);
+                                break;
+                            }
+                            break;
+                        }
+                        for (int f = 0; f < 40; f++) w.Update(1 / 30f, new PlayerInput());
+
+                        var head = new SaveHeader
+                        {
+                            Level = 1, TotalKills = 5, TotalKillsMax = 9, TotalSecrets = 1, TotalSecretsMax = 3,
+                            TotalScore = 1234, TotalTime = 99.5f, Difficulty = s.Difficulty,
+                        };
+                        if (!SaveGame.Save(head, w)) { Console.WriteLine("could not write the save file"); return 1; }
+                        var head2 = SaveGame.ReadHeader();
+                        if (head2 == null) { Console.WriteLine("could not read the save header"); return 1; }
+                        var w2 = SaveGame.Load(head2, levels, s);
+                        if (w2 == null) { Console.WriteLine("could not load the save"); return 1; }
+
+                        int bad = 0;
+                        bad += SaveCmp("level", head.Level, head2.Level);
+                        bad += SaveCmp("total score", head.TotalScore, head2.TotalScore);
+                        bad += SaveCmp("total time", head.TotalTime.ToString("0.0", inv), head2.TotalTime.ToString("0.0", inv));
+                        bad += SaveCmp("score", w.Score, w2.Score);
+                        bad += SaveCmp("kills", w.Kills, w2.Kills);
+                        bad += SaveCmp("monsters in the level", w.TotalKills, w2.TotalKills);
+                        bad += SaveCmp("items taken", w.ItemsTaken, w2.ItemsTaken);
+                        bad += SaveCmp("secrets", w.Secrets, w2.Secrets);
+                        bad += SaveCmp("level time", w.LevelTime.ToString("0.0", inv), w2.LevelTime.ToString("0.0", inv));
+                        bad += SaveCmp("player position", Pos(w.P.X, w.P.Y), Pos(w2.P.X, w2.P.Y));
+                        bad += SaveCmp("health", w.P.HP, w2.P.HP);
+                        bad += SaveCmp("armor", w.P.Armor, w2.P.Armor);
+                        bad += SaveCmp("weapon", w.P.Weapon, w2.P.Weapon);
+                        bad += SaveCmp("ammo", string.Join(",", Array.ConvertAll(w.P.Ammo, x => x.ToString())), string.Join(",", Array.ConvertAll(w2.P.Ammo, x => x.ToString())));
+                        bad += SaveCmp("weapons held", Flags(w.P.Has), Flags(w2.P.Has));
+                        bad += SaveCmp("keys", Flags(w.P.Keys), Flags(w2.P.Keys));
+                        bad += SaveCmp("monsters", Actors(w, ActorKind.Monster), Actors(w2, ActorKind.Monster));
+                        bad += SaveCmp("items", Actors(w, ActorKind.Item), Actors(w2, ActorKind.Item));
+                        bad += SaveCmp("barrels", Actors(w, ActorKind.Barrel), Actors(w2, ActorKind.Barrel));
+                        bad += SaveCmp("doors", Doors(w), Doors(w2));
+                        bad += SaveCmp("secret walls", Pushes(w), Pushes(w2));
+                        bad += SaveCmp("map cells", Cells(w), Cells(w2));
+                        Console.WriteLine(bad == 0 ? "save and load match" : bad + " difference(s) after loading");
+                        SaveGame.Delete();
+                        return bad;
+                    }
                 case "--dev-check":
                     {
                         // proves every level can be finished: collects reachable keys until the exit is reachable
@@ -423,8 +590,8 @@ namespace TerminalHell
                             var s = new Settings();
                             var w = new World(def, s, null);
                             w.DamageMul = 0;
-                            w.P.Has[2] = w.P.Has[3] = w.P.Has[4] = true;
-                            w.P.Ammo[0] = 200; w.P.Ammo[1] = 50; w.P.Ammo[2] = 50;
+                            w.P.Has[2] = w.P.Has[3] = w.P.Has[4] = w.P.Has[5] = true;
+                            w.P.Ammo[0] = 200; w.P.Ammo[1] = 50; w.P.Ammo[2] = 50; w.P.Ammo[3] = 60;
                             var open = new List<int>();
                             for (int i = 0; i < w.Map.W * w.Map.H; i++) if (w.Map.Kind[i] == CellKind.Empty) open.Add(i);
                             var inp = new PlayerInput();
@@ -436,10 +603,12 @@ namespace TerminalHell
                                     inp = new PlayerInput();
                                     inp.Forward = rng.Next(3) - 1; inp.Strafe = rng.Next(3) - 1;
                                     inp.Fire = rng.Next(3) == 0; inp.Run = rng.Next(2) == 0;
-                                    inp.SelectSlot = rng.Next(8) == 0 ? rng.Next(1, 6) : 0;
+                                    inp.SelectSlot = rng.Next(8) == 0 ? rng.Next(1, Player.Weapons + 1) : 0;
                                 }
                                 inp.Turn = (float)(rng.NextDouble() - 0.5) * 0.1f;
                                 inp.Use = rng.Next(10) == 0;
+                                inp.Jump = rng.Next(25) == 0;
+                                inp.Parry = rng.Next(14) == 0;
                                 if (f % 300 == 0)
                                 {
                                     int c = open[rng.Next(open.Count)];
@@ -523,6 +692,67 @@ namespace TerminalHell
             }
             Console.WriteLine("unknown dev tool");
             return 1;
+        }
+
+        // ---------------------------------------------------------------- helpers for --dev-save
+
+        static int SaveCmp(string what, object before, object after)
+        {
+            bool same = before.ToString() == after.ToString();
+            if (!same) Console.WriteLine("  DIFFERENT " + what + ": saved " + before + ", loaded " + after);
+            return same ? 0 : 1;
+        }
+
+        static string Pos(float x, float y)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            return x.ToString("0.00", inv) + "," + y.ToString("0.00", inv);
+        }
+
+        static string Flags(bool[] f)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (bool b in f) sb.Append(b ? '1' : '0');
+            return sb.ToString();
+        }
+
+        /// <summary>Every actor of one kind as text, sorted, so two worlds can be compared.</summary>
+        static string Actors(World w, ActorKind kind)
+        {
+            var list = new List<string>();
+            foreach (var a in w.Actors)
+            {
+                if (a.Kind != kind || a.Remove) continue;
+                var m = a as Monster;
+                var it = a as Item;
+                string tag = m != null ? m.Def.Code + " " + m.State + " " + m.Health.ToString("0", CultureInfo.InvariantCulture)
+                    : it != null ? it.Code + (it.Dropped ? " dropped" : "")
+                    : a.Health.ToString("0", CultureInfo.InvariantCulture);
+                list.Add(Pos(a.X, a.Y) + " " + tag);
+            }
+            list.Sort(StringComparer.Ordinal);
+            return list.Count + ": " + string.Join(" | ", list.ToArray());
+        }
+
+        static string Doors(World w)
+        {
+            var list = new List<string>();
+            foreach (var d in w.Map.Doors) list.Add(d.State + ":" + d.Open.ToString("0.00", CultureInfo.InvariantCulture));
+            return string.Join(",", list.ToArray());
+        }
+
+        static string Pushes(World w)
+        {
+            var list = new List<string>();
+            foreach (var p in w.Map.PushWalls) list.Add(p.X + "," + p.Y + " moved " + p.Moved + (p.Done ? " done" : "") + (p.Counted ? " counted" : ""));
+            return string.Join(",", list.ToArray());
+        }
+
+        static string Cells(World w)
+        {
+            var counts = new int[4];
+            foreach (var k in w.Map.Kind) counts[(int)k]++;
+            return "empty " + counts[0] + ", wall " + counts[1] + ", door " + counts[2] + ", secret " + counts[3];
         }
     }
 }

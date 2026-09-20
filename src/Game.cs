@@ -149,7 +149,7 @@ namespace TerminalHell
             NewGame(level);
             world.P.X = x; world.P.Y = y; world.P.Angle = (float)(angleDeg * Math.PI / 180);
             world.P.Pitch = pitch;
-            if (weapon >= 0) { for (int i = 0; i < 5; i++) world.P.Has[i] = true; world.P.Weapon = weapon; }
+            if (weapon >= 0) { for (int i = 0; i < Player.Weapons; i++) world.P.Has[i] = true; world.P.Weapon = weapon; }
             var inp = new PlayerInput();
             for (float t = 0; t < simSeconds; t += 1 / 30f) { world.Update(1 / 30f, inp); introTime -= 1 / 30f; }
             Draw(1 / 30f);
@@ -272,6 +272,8 @@ namespace TerminalHell
         {
             var m = new Menu("MAIN MENU");
             m.Add("NEW GAME", () => menus.Add(DifficultyMenu()));
+            var saved = SaveGame.ReadHeader();
+            if (saved != null) m.Add("CONTINUE  " + saved.Describe(levels), () => LoadSaved());
             m.Add("OPTIONS", () => menus.Add(OptionsMenu()));
             m.Add("CONTROLS", () => menus.Add(ControlsMenu()));
             m.Add("QUIT", () => quit = true);
@@ -293,6 +295,8 @@ namespace TerminalHell
         {
             var m = new Menu("PAUSED");
             m.Add("RESUME", () => menus.Clear());
+            m.Add("SAVE GAME", () => SaveNow());
+            if (SaveGame.Exists) m.Add("LOAD GAME", () => LoadSaved());
             m.Add("OPTIONS", () => menus.Add(OptionsMenu()));
             m.Add("CONTROLS", () => menus.Add(ControlsMenu()));
             m.Add("RESTART LEVEL", () => RestartLevel());
@@ -348,12 +352,14 @@ namespace TerminalHell
                 "MOVE",
                 "  W A S D ........ MOVE / STRAFE",
                 "  SHIFT .......... RUN",
+                "  SPACE .......... JUMP",
                 "  MOUSE .......... LOOK AROUND",
                 "  ARROW KEYS ..... MOVE / TURN",
                 "ACTION",
                 "  LEFT CLICK / F . FIRE",
-                "  E / SPACE / RMB  OPEN DOORS, SWITCHES, SECRETS",
-                "  1-5 / WHEEL .... CHOOSE WEAPON   Q  LAST WEAPON",
+                "  RIGHT CLICK .... PUNCH - TIME IT TO PARRY A PROJECTILE",
+                "  E .............. OPEN DOORS, SWITCHES, SECRETS",
+                "  1-6 / WHEEL .... CHOOSE WEAPON   Q  LAST WEAPON",
                 "OTHER",
                 "  TAB ............ AUTOMAP",
                 "  ESC ............ PAUSE MENU",
@@ -363,6 +369,54 @@ namespace TerminalHell
             };
             m.Add("BACK", () => CloseTopMenu());
             return m;
+        }
+
+        /// <summary>Writes the one save slot: where you are, what you carry, and the state of the whole level.</summary>
+        void SaveNow()
+        {
+            if (world == null) return;
+            var h = new SaveHeader
+            {
+                Level = levelIndex,
+                TotalKills = totalKills, TotalKillsMax = totalKillsMax,
+                TotalSecrets = totalSecrets, TotalSecretsMax = totalSecretsMax,
+                TotalScore = totalScore, TotalTime = totalTime,
+                Difficulty = S.Difficulty,
+            };
+            bool ok = SaveGame.Save(h, world);
+            menus.Clear();
+            Input.ClearKeys();
+            world.Message(ok ? "GAME SAVED." : "COULD NOT WRITE THE SAVE FILE.", ok ? Col.Rgb(140, 255, 140) : Col.Rgb(255, 120, 60));
+        }
+
+        /// <summary>Picks the saved game back up, exactly where it was left.</summary>
+        void LoadSaved()
+        {
+            var h = SaveGame.ReadHeader();
+            if (h == null) return;
+            S.Difficulty = h.Difficulty;   // the run keeps the difficulty it was started on
+            var w = SaveGame.Load(h, levels, S);
+            if (w == null)
+            {
+                if (world != null) world.Message("THE SAVED GAME COULD NOT BE READ.", Col.Rgb(255, 120, 60));
+                return;
+            }
+            world = w;
+            if (God) world.DamageMul = 0;
+            levelIndex = h.Level;
+            totalKills = h.TotalKills; totalKillsMax = h.TotalKillsMax;
+            totalSecrets = h.TotalSecrets; totalSecretsMax = h.TotalSecretsMax;
+            totalScore = h.TotalScore; totalTime = h.TotalTime;
+            carry = world.P.CloneInventory();
+            state = GState.Playing;
+            stateTime = 0;
+            introTime = 1.6f;
+            automap = false;
+            fireLock = true;
+            menus.Clear();
+            Music.Play(levels[levelIndex].Music);
+            Input.ClearKeys();
+            world.Message("GAME LOADED - " + levels[levelIndex].Id + ": " + levels[levelIndex].Name, Col.Rgb(140, 255, 140));
         }
 
         void CloseTopMenu()
@@ -471,8 +525,10 @@ namespace TerminalHell
                 if (inp.Fire) inp.Fire = false;
                 else fireLock = false;
             }
-            inp.Use = Input.Hit('E') || Input.Hit(Input.VK_SPACE) || Input.RHit;
-            for (int i = 0; i < 5; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
+            inp.Use = Input.Hit('E');
+            inp.Jump = Input.Hit(Input.VK_SPACE);
+            inp.Parry = Input.RHit;
+            for (int i = 0; i < Player.Weapons; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
             if (Input.Wheel != 0) inp.Cycle = Input.Wheel > 0 ? -1 : 1;
             if (Input.Hit('Q') && world.P.Has[world.P.LastWeapon]) inp.SelectSlot = world.P.LastWeapon + 1;
 
@@ -593,7 +649,7 @@ namespace TerminalHell
                 scr.PrintCenter(ty + 1, "BEST SCORE " + Num(S.BestScore) + "   IN " + FormatTime(S.BestTime), Col.Rgb(255, 210, 120), Screen.Transparent);
                 titleBottom = ty + 2;
             }
-            string foot = " WASD MOVE  -  MOUSE LOOK  -  CLICK FIRE  -  E USE  -  ESC MENU ";
+            string foot = " WASD MOVE  -  MOUSE LOOK  -  CLICK FIRE  -  RIGHT CLICK PARRY  -  SPACE JUMP  -  E USE ";
             if (scr.Cols > foot.Length + 2) scr.PrintCenter(scr.Rows - 1, foot, Col.Rgb(230, 200, 170), Col.Rgb(24, 8, 6));
 #if LINUX
             // the game can't resize a Linux terminal itself: point out the zoom keys while the picture is coarse

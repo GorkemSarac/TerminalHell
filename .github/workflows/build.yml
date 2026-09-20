@@ -26,6 +26,18 @@ jobs:
           .\bin\TerminalHell.exe --dev-menu
           if ($LASTEXITCODE -ne 0) { throw "menu test failed" }
 
+      - name: Save test (a played level survives a save and load)
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-save
+          if ($LASTEXITCODE -ne 0) { throw "save test failed" }
+
+      - name: Parry and jump test
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-moves
+          if ($LASTEXITCODE -ne 0) { throw "parry / jump test failed" }
+
       - name: Soak test (random bot plays every level)
         shell: powershell
         run: |
@@ -57,6 +69,12 @@ jobs:
 
       - name: Menu test (clicking a setting changes it the right way)
         run: ./out/terminalhell --dev-menu
+
+      - name: Save test (a played level survives a save and load)
+        run: ./out/terminalhell --dev-save
+
+      - name: Parry and jump test
+        run: ./out/terminalhell --dev-moves
 
       - name: Soak test (random bot plays every level)
         run: ./out/terminalhell --dev-soak

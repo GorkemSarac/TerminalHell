@@ -457,36 +457,18 @@ namespace TerminalHell
             return im;
         }
 
-        /// <summary>A secret wall: the same stone, but warmer, with the glowing seams of a panel that slides away
-        /// and a rune in the middle. Different enough to spot, quiet enough not to give every secret away at a glance.</summary>
+        /// <summary>A secret wall: the same wall, with three small claw scratches gouged into the middle of it.
+        /// Only the scratches tell it apart, so you still have to be looking.</summary>
         static Image SecretWall(Image src)
         {
             var im = src.Clone();
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
-                {
-                    int c = Px(im, x, y);
-                    Set(im, x, y, Col.Rgb((int)(Col.R(c) * 1.15f) + 8, (int)(Col.G(c) * 0.86f), (int)(Col.B(c) * 0.8f)));
-                }
-            int seam = Col.Rgb(150, 62, 26), deep = Col.Rgb(28, 10, 6);
-            for (int y = 0; y < S; y++)
-            {
-                // the gap down each side of the panel, with a dull ember line inside it
-                Set(im, 1, y, deep); Set(im, 2, y, seam | Col.EMISSIVE); Set(im, 3, y, deep);
-                Set(im, S - 4, y, deep); Set(im, S - 3, y, seam | Col.EMISSIVE); Set(im, S - 2, y, deep);
-            }
-            for (int x = 1; x < S - 1; x++)
-            {
-                Set(im, x, 1, deep); Set(im, x, 2, Col.Scale(seam, 0.7f) | Col.EMISSIVE);
-                Set(im, x, S - 3, Col.Scale(seam, 0.7f) | Col.EMISSIVE); Set(im, x, S - 2, deep);
-            }
-            // a small rune: three claw marks
             for (int i = 0; i < 3; i++)
-                for (int y = 26; y < 38; y++)
+                for (int y = 22; y < 42; y++)
                 {
-                    int x = 27 + i * 5 + (y - 26) / 5;
-                    Set(im, x, y, Col.Scale(seam, 0.85f) | Col.EMISSIVE);
-                    Set(im, x + 1, y, Col.Scale(seam, 0.5f) | Col.EMISSIVE);
+                    int x = 27 + i * 5 + (y - 22) / 4;
+                    bool tip = y < 24 || y > 39;                                            // the marks taper off at the ends
+                    Set(im, x, y, Col.Scale(Px(im, x, y), tip ? 0.6f : 0.32f));             // the groove
+                    if (!tip) Set(im, x + 1, y, Col.Lerp(Px(im, x + 1, y), Col.Rgb(255, 246, 232), 0.45f));   // its lit edge
                 }
             return im;
         }

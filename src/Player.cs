@@ -8,12 +8,12 @@ namespace TerminalHell
     {
         public string Name;
         public int Slot;
-        public int Ammo = -1;        // -1 none, 0 bullets, 1 shells, 2 rockets
+        public int Ammo = -1;        // -1 none, 0 bullets, 1 shells, 2 rockets, 3 soul cells
         public float Cooldown;
         public int Pellets = 1;
         public float Spread;
         public int DmgMin, DmgMax;
-        public bool Melee, Rocket;
+        public bool Melee, Rocket, Ray;
         public Sfx Sound;
         public float Anim;           // length of the firing animation
 
@@ -24,25 +24,28 @@ namespace TerminalHell
             new WeaponDef { Name = "SHOTGUN", Slot = 3, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
             new WeaponDef { Name = "MINIGUN", Slot = 4, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
             new WeaponDef { Name = "LAUNCHER", Slot = 5, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
+            new WeaponDef { Name = "RAY GUN", Slot = 6, Ammo = 3, Cooldown = 0.5f, DmgMin = 55, DmgMax = 90, Ray = true, Sound = Sfx.RayGun, Anim = 0.45f },
         };
     }
 
     struct PlayerInput
     {
         public float Forward, Strafe, Turn, Look;
-        public bool Run, Fire, Use;
-        public int SelectSlot;     // 1..5, 0 none
+        public bool Run, Fire, Use, Jump, Parry;
+        public int SelectSlot;     // 1..6, 0 none
         public int Cycle;          // -1 / +1 from the mouse wheel
     }
 
     sealed class Player : Actor
     {
+        public const int Weapons = 6, AmmoTypes = 4;
+
         public float Angle, Pitch, VX, VY;
         public int HP = 100, Armor, ArmorType;
-        public readonly int[] Ammo = new int[3];
-        public static readonly int[] MaxAmmo = { 200, 50, 50 };
-        public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT" };
-        public readonly bool[] Has = new bool[5];
+        public readonly int[] Ammo = new int[AmmoTypes];
+        public static readonly int[] MaxAmmo = { 200, 50, 50, 60 };
+        public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT", "SOUL" };
+        public readonly bool[] Has = new bool[Weapons];
         public readonly bool[] Keys = new bool[4];
         public int Weapon = 1, Pending = -1, LastWeapon = 0;
         public bool Dead;
@@ -58,6 +61,15 @@ namespace TerminalHell
         public float SwayX;       // weapon lag when turning with the mouse
         bool fireWasDown, dryClicked;
         public float MuzzleTime;
+        public float VZ;          // jumping: Z is how high the feet are off the floor
+        public bool OnGround = true;
+        public float ParryTime;   // > 0: a fist is out and projectiles that reach it are knocked back
+        public float ParryCool;
+        public float PunchAnim = 9;
+
+        // a hop of about a third of a metre: enough to clear a lava tile with a run-up, never enough to reach the ceiling
+        public const float JumpSpeed = 2.9f, Gravity = 12f, MaxJumpZ = 0.4f;
+        public const float ParryWindow = 0.28f, ParryCooldown = 0.5f;
 
         public Player()
         {
@@ -72,8 +84,9 @@ namespace TerminalHell
         public void ResetForNewGame()
         {
             HP = 100; Armor = 0; ArmorType = 0;
-            for (int i = 0; i < 5; i++) Has[i] = i < 2;
-            Ammo[0] = 50; Ammo[1] = 0; Ammo[2] = 0;
+            for (int i = 0; i < Weapons; i++) Has[i] = i < 2;
+            for (int i = 0; i < AmmoTypes; i++) Ammo[i] = 0;
+            Ammo[0] = 50;
             Weapon = 1; Pending = -1;
         }
 
@@ -81,8 +94,8 @@ namespace TerminalHell
         {
             var p = new Player();
             p.HP = HP; p.Armor = Armor; p.ArmorType = ArmorType;
-            Array.Copy(Ammo, p.Ammo, 3);
-            Array.Copy(Has, p.Has, 5);
+            Array.Copy(Ammo, p.Ammo, AmmoTypes);
+            Array.Copy(Has, p.Has, Weapons);
             p.Weapon = Weapon;
             return p;
         }
@@ -90,8 +103,8 @@ namespace TerminalHell
         public void CopyInventoryFrom(Player o)
         {
             HP = Math.Max(o.HP, 1); Armor = o.Armor; ArmorType = o.ArmorType;
-            Array.Copy(o.Ammo, Ammo, 3);
-            Array.Copy(o.Has, Has, 5);
+            Array.Copy(o.Ammo, Ammo, AmmoTypes);
+            Array.Copy(o.Has, Has, Weapons);
             Weapon = o.Weapon;
         }
 
@@ -105,7 +118,7 @@ namespace TerminalHell
 
         int BestWeapon()
         {
-            int[] pref = { 3, 2, 4, 1, 0 };
+            int[] pref = { 5, 3, 2, 4, 1, 0 };
             foreach (int wi in pref)
                 if (Has[wi] && HasAmmoFor(wi) && wi != 4) return wi;
             return Has[4] && HasAmmoFor(4) ? 4 : 0;
@@ -113,7 +126,7 @@ namespace TerminalHell
 
         public void SelectWeapon(int wi)
         {
-            if (wi < 0 || wi > 4 || !Has[wi] || wi == Weapon && Pending < 0) return;
+            if (wi < 0 || wi >= Weapons || !Has[wi] || wi == Weapon && Pending < 0) return;
             if (!HasAmmoFor(wi)) return;
             Pending = wi;
         }
@@ -161,11 +174,45 @@ namespace TerminalHell
             float s = Math.Min(1, speed / 4.1f);
             BobPhase += dt * (6 + 4 * s) * (s > 0.05f ? 1 : 0);
             BobAmt += (s - BobAmt) * Math.Min(1, dt * 8);
-            EyeZ = 0.5f + (w.Settings.HeadBob ? (float)Math.Sin(BobPhase * 2) * 0.018f * BobAmt : 0);
 
-            // ---- hurt floors
+            // ---- jumping: a short hop, enough to clear a lava tile with a run-up
+            if (inp.Jump && OnGround)
+            {
+                VZ = JumpSpeed;
+                OnGround = false;
+                Audio.Play(Sfx.Jump, 0.5f, 0, 1, 0);
+            }
+            if (!OnGround)
+            {
+                VZ -= Gravity * dt;
+                Z += VZ * dt;
+                if (Z <= 0)
+                {
+                    Z = 0;
+                    OnGround = true;
+                    if (VZ < -2.5f) Audio.Play(Sfx.Land, 0.45f, 0, 1, 0);
+                    VZ = 0;
+                }
+                else if (Z > MaxJumpZ && VZ > 0) { Z = MaxJumpZ; VZ = 0; }   // the ceiling is low: never rise into it
+            }
+            EyeZ = 0.5f + Z + (w.Settings.HeadBob && OnGround ? (float)Math.Sin(BobPhase * 2) * 0.018f * BobAmt : 0);
+
+            // ---- the parry: a fist thrown out with the right button
+            ParryTime -= dt;
+            ParryCool -= dt;
+            PunchAnim += dt;
+            if (inp.Parry && ParryCool <= 0 && !Dead)
+            {
+                ParryTime = ParryWindow;
+                ParryCool = ParryCooldown;
+                PunchAnim = 0;
+                w.PlayerPunch(this);
+            }
+
+            // ---- hurt floors (not while in the air over them)
             var fk = w.Map.In((int)X, (int)Y) ? w.Map.Floor[(int)Y * w.Map.W + (int)X] : FloorKind.A;
-            bool lava = fk == FloorKind.Lava || fk == FloorKind.LavaOut, slime = fk == FloorKind.Nukage || fk == FloorKind.NukageOut;
+            bool lava = (fk == FloorKind.Lava || fk == FloorKind.LavaOut) && Z < 0.15f;
+            bool slime = (fk == FloorKind.Nukage || fk == FloorKind.NukageOut) && Z < 0.15f;
             if (lava || slime)
             {
                 HurtFloorTimer -= dt;
@@ -189,9 +236,9 @@ namespace TerminalHell
             if (inp.Cycle != 0)
             {
                 int wi = Pending >= 0 ? Pending : Weapon;
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < Weapons; i++)
                 {
-                    wi = (wi + inp.Cycle + 5) % 5;
+                    wi = (wi + inp.Cycle + Weapons) % Weapons;
                     if (Has[wi] && HasAmmoFor(wi)) { SelectWeapon(wi); break; }
                 }
             }
@@ -295,12 +342,14 @@ namespace TerminalHell
                 case 'S': GiveWeapon(w, 2, 1, 8, "YOU GOT THE SHOTGUN!"); break;
                 case 'N': GiveWeapon(w, 3, 0, 20, "YOU GOT THE MINIGUN!"); break;
                 case 'L': GiveWeapon(w, 4, 2, 2, "YOU GOT THE ROCKET LAUNCHER!"); break;
+                case 'W': GiveWeapon(w, 5, 3, 12, "YOU GOT THE RAY GUN! IT IS WARM."); break;
+                case 'w': if (!AddAmmo(3, (int)(8 * am))) return false; w.Message("PICKED UP SOUL CELLS.", Col.Rgb(255, 150, 230)); break;
                 case 'r': Keys[1] = true; w.Message("PICKED UP A RED KEYCARD.", Col.Rgb(255, 80, 60)); Audio.Play(Sfx.KeyPickup); break;
                 case 'b': Keys[2] = true; w.Message("PICKED UP A BLUE KEYCARD.", Col.Rgb(90, 150, 255)); Audio.Play(Sfx.KeyPickup); break;
                 case 'y': Keys[3] = true; w.Message("PICKED UP A YELLOW KEYCARD.", Col.Rgb(255, 220, 60)); Audio.Play(Sfx.KeyPickup); break;
                 default: return false;
             }
-            if (c != 'o' && c != 'r' && c != 'b' && c != 'y' && c != 'S' && c != 'N' && c != 'L') Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
+            if ("orbySNLW".IndexOf(c) < 0) Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
             PickupFlash = Math.Min(1, PickupFlash + 0.5f);
             return true;
         }
@@ -315,6 +364,7 @@ namespace TerminalHell
             {
                 if (type == 0 && Has[1]) SelectWeapon(Has[3] ? 3 : 1);
                 if (type == 1 && Has[2]) SelectWeapon(2);
+                if (type == 3 && Has[5]) SelectWeapon(5);
             }
             return true;
         }

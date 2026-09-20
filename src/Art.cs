@@ -14,6 +14,7 @@ namespace TerminalHell
         public static Image Barrel, Pillar, Corpse, BloodPool, Skulls, CeilLamp, TechLamp, BarrelDead, Pedestal;
         public static Image[] Torch = new Image[3];
         public static Image[] Fireball = new Image[2], Rocket = new Image[2], Explosion = new Image[6], Puff = new Image[3], Blood = new Image[3];
+        public static Image[] Bullet = new Image[2], RayBolt = new Image[2];
         public static Image[] Soulsphere = new Image[2];
         public static Image[] Keys = new Image[4];
 
@@ -517,6 +518,30 @@ namespace TerminalHell
             Items['S'] = GunPickup(0);
             Items['N'] = GunPickup(1);
             Items['L'] = GunPickup(2);
+            // the ray gun: bone and sinew around a caged ember
+            c = new Canvas(34, 16);
+            {
+                int bone = Col.Rgb(214, 202, 172), boneDark = Col.Rgb(150, 138, 112), meat = Col.Rgb(120, 32, 40);
+                c.Tube(3, 4, 20, 6, bone, false);
+                c.Poly(new float[] { 3, 4, 9, 1, 14, 3, 12, 6 }, boneDark, meat);          // the jaw along the top
+                c.Rect(8, 6, 10, 3, meat);
+                c.Glow(9.5f, 7.5f, 4.5f, Col.Rgb(255, 180, 255), Col.Rgb(220, 30, 90));    // the ember in its cage
+                for (int i = 0; i < 4; i++) c.Rect(7.5f + i * 2.6f, 5.5f, 0.9f, 4.5f, boneDark);
+                c.Poly(new float[] { 23, 3, 31, 6, 31, 11, 22, 10 }, meat, Col.Scale(meat, 0.6f));   // the grip
+                c.Ball(3.5f, 7, 2.6f, 3.2f, Col.Rgb(255, 120, 200) | Col.EMISSIVE, false); // the muzzle
+                c.Rect(13, 10, 8, 2, boneDark);
+                c.Outline(Col.Rgb(16, 8, 12));
+            }
+            Items['W'] = c.Done();
+            // soul cells: the only thing the ray gun will eat, and it is never lying around in the open
+            c = new Canvas(14, 16);
+            c.Rect(2, 3, 10, 12, Col.Rgb(58, 46, 66), Col.Rgb(34, 26, 40));
+            c.Rect(3.5f, 5, 7, 8, Col.Rgb(20, 10, 24));
+            c.Glow(7, 9, 4.6f, Col.Rgb(255, 220, 255), Col.Rgb(190, 30, 120));
+            c.Ball(7, 8.5f, 1.6f, 2.2f, Col.Rgb(255, 245, 255) | Col.EMISSIVE, false);
+            c.Rect(4, 1, 6, 2.5f, Col.Rgb(80, 66, 90));
+            c.Outline(Col.Rgb(12, 8, 16));
+            Items['w'] = c.Done();
             // keycards
             int[] kc = { 0, Col.Rgb(240, 40, 30), Col.Rgb(40, 110, 250), Col.Rgb(250, 210, 30) };
             char[] kch = { ' ', 'r', 'b', 'y' };
@@ -695,6 +720,17 @@ namespace TerminalHell
                 c.Ball(5, 5, 4, 4, Col.Rgb(120, 120, 110));
                 c.Glow(5, 5, 3 + f * 0.6f, Col.Rgb(255, 255, 220), Col.Rgb(255, 140, 30));
                 Rocket[f] = c.Done();
+                // a soldier's round: small, hot, and just big enough to read as it comes at you
+                c = new Canvas(8, 6);
+                c.Glow(4, 3, 3.4f + f * 0.4f, Col.Rgb(255, 250, 210), Col.Rgb(255, 150, 40));
+                c.Ball(4, 3, 1.6f, 1.2f, Col.Rgb(255, 255, 255) | Col.EMISSIVE, false);
+                Bullet[f] = c.Done();
+                // the ray gun's bolt: a knot of hell light
+                c = new Canvas(16, 16);
+                c.Glow(8, 8, 7.5f - f * 0.5f, Col.Rgb(255, 210, 255), Col.Rgb(190, 20, 70));
+                c.Glow(8, 8, 3.6f + f * 0.5f, Col.Rgb(255, 255, 255), Col.Rgb(255, 90, 180));
+                c.Ball(8, 8, 1.8f, 1.8f, Col.Rgb(255, 255, 255) | Col.EMISSIVE, false);
+                RayBolt[f] = c.Done();
             }
             for (int f = 0; f < 6; f++)
             {
