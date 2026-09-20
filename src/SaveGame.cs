@@ -128,7 +128,7 @@ namespace TerminalHell
                     var it = a as Item;
                     if (it != null)
                     {
-                        sb.AppendLine(string.Join(" ", new[] { "item", it.Code.ToString(), F(it.X), F(it.Y), S(it.Dropped ? 1 : 0) }));
+                        sb.AppendLine(string.Join(" ", new[] { "item", it.Code.ToString(), F(it.X), F(it.Y), S(it.Dropped ? 1 : 0), F(it.Z) }));
                         continue;
                     }
                     var b = a as Barrel;
@@ -213,6 +213,8 @@ namespace TerminalHell
                             {
                                 var it = new Item(f[1][0], Flt(f, 2), Flt(f, 3));
                                 it.Dropped = Int(f, 4) != 0;
+                                // the pedestals came back with the level: put the weapon back on top of its own
+                                it.Z = f.Length > 5 ? Flt(f, 5) : (World.OnPedestal(it.Code, it.Dropped) ? World.PedestalTop : 0);
                                 w.Actors.Add(it);
                                 break;
                             }

@@ -221,13 +221,21 @@ namespace TerminalHell
 
         // ------------------------------------------------------------ overlays in the view
 
-        public static void DrawMessages(Screen s, World w, int viewRows)
+        public static void DrawMessages(Screen s, World w, int viewRows, bool big)
         {
-            int y = 0;
+            // pickups and hints are drawn in the game's own pixel font, a good deal larger than a text line
+            int py = 2, cellY = 0;
             foreach (var m in w.Messages)
             {
                 int c = m.Time < 0.6f ? Col.Lerp(0x202020, m.Color, m.Time / 0.6f) : m.Color;
-                s.Print(1, y++, m.Text, c, Screen.Transparent);
+                float alpha = Math.Min(1, m.Time / 0.4f);
+                if (big && MiniFont.TextWidth(m.Text, 1) + 6 <= s.W && py + 7 < viewRows * 2)
+                {
+                    MiniFont.Draw(s.Pix, s.W, s.H, m.Text, 3, py, 1, c, Col.Scale(c, 0.6f), Col.Rgb(20, 8, 6), alpha);
+                    py += 8;
+                    cellY = py / 2;
+                }
+                else s.Print(1, cellY++, m.Text, c, Screen.Transparent);   // small text, or too long to draw big
             }
             if (w.Hint != null && !w.P.Dead)
             {

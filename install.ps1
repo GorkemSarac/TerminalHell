@@ -11,7 +11,8 @@
       1. downloads the source code of the repository below
       2. compiles it with the C# compiler that ships with Windows (.NET Framework 4.x) - nothing else to install
       3. installs to %LOCALAPPDATA%\Programs\TerminalHell and adds the "terminalhell" command to your PATH
-      4. adds a "TERMINAL HELL" shortcut to the Start menu
+      4. adds a "TERMINAL HELL" shortcut to the Start menu, and offers one on the desktop
+         (set TERMINALHELL_DESKTOP to 1 or 0 to answer that in advance)
     Running it again updates an existing installation.
 #>
 & {
@@ -81,11 +82,10 @@
     }
     if (($env:Path -split ';') -notcontains $InstallDir) { $env:Path = $env:Path.TrimEnd(';') + ';' + $InstallDir }
 
-    # ---- Start menu shortcut (opens in the classic console, which the game can size and style itself)
-    try {
-        $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'TERMINAL HELL.lnk'
+    # ---- shortcuts (they open the classic console, which the game can size and style itself)
+    function New-GameShortcut([string]$Path) {
         $shell = New-Object -ComObject WScript.Shell
-        $sc = $shell.CreateShortcut($lnk)
+        $sc = $shell.CreateShortcut($Path)
         $sc.TargetPath = Join-Path $env:WINDIR 'System32\conhost.exe'
         $sc.Arguments = '"' + $exe + '"'
         $sc.WorkingDirectory = $InstallDir
@@ -93,7 +93,22 @@
         $sc.Description = 'TERMINAL HELL - a first person shooter for your terminal'
         $sc.Save()
     }
+
+    try { New-GameShortcut (Join-Path ([Environment]::GetFolderPath('Programs')) 'TERMINAL HELL.lnk') }
     catch { Say "Could not create the Start menu shortcut: $($_.Exception.Message)" DarkYellow }
+
+    # a desktop shortcut is optional: asked here, or set TERMINALHELL_DESKTOP to 1 or 0 to decide in advance
+    $interactive = [Environment]::UserInteractive -and $Host.Name -eq 'ConsoleHost' -and -not $env:TERMINALHELL_NO_LAUNCH
+    $desktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'TERMINAL HELL.lnk'
+    $wantDesktop = $false
+    if ($env:TERMINALHELL_DESKTOP -eq '1') { $wantDesktop = $true }
+    elseif ($env:TERMINALHELL_DESKTOP -eq '0') { $wantDesktop = $false }
+    elseif (Test-Path $desktopLnk) { $wantDesktop = $true }          # keep one that is already there
+    elseif ($interactive) { $wantDesktop = (Read-Host 'Create a desktop shortcut? [Y/n]') -notmatch '^\s*[nN]' }
+    if ($wantDesktop) {
+        try { New-GameShortcut $desktopLnk; Say 'Desktop shortcut created.' }
+        catch { Say "Could not create the desktop shortcut: $($_.Exception.Message)" DarkYellow }
+    }
 
     if ($tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 
@@ -104,7 +119,6 @@
     Say "  Uninstall:  powershell -ExecutionPolicy Bypass -File `"$InstallDir\uninstall.ps1`""
     Say ''
 
-    $interactive = [Environment]::UserInteractive -and $Host.Name -eq 'ConsoleHost' -and -not $env:TERMINALHELL_NO_LAUNCH
     if ($interactive) {
         $answer = Read-Host 'Play now? [Y/n]'
         if ($answer -notmatch '^\s*[nN]') { & $exe }

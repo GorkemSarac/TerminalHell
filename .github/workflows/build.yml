@@ -20,7 +20,7 @@ jobs:
           .\bin\TerminalHell.exe --dev-check
           if ($LASTEXITCODE -ne 0) { throw "level check failed" }
 
-      - name: Menu test (clicking a setting changes it the right way)
+      - name: Menu and update-version checks
         shell: powershell
         run: |
           .\bin\TerminalHell.exe --dev-menu

@@ -1,4 +1,4 @@
-// TERMINAL HELL - entry point.
+﻿// TERMINAL HELL - entry point.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.2.0";
+        public const string Version = "1.4.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -46,6 +46,7 @@ namespace TerminalHell
                 return DevTool(argl);
 
             var settings = Settings.Load();
+            Updater.CheckInBackground(settings);
             if (argl.Contains("--ascii")) settings.Display = DisplayMode.Ascii;
             if (argl.Contains("--legacy")) settings.Display = DisplayMode.Legacy;
             if (argl.Contains("--hd")) settings.Display = DisplayMode.HD;
@@ -77,6 +78,8 @@ namespace TerminalHell
                 {
                     game.AutoTestSeconds = float.Parse(argl[ai + 1], CultureInfo.InvariantCulture);
                     game.AutoTestLog = argl[ai + 2];
+                    // a scripted run is not a player's session: keep it away from their save slot
+                    SaveGame.PathOverride = Path.Combine(Path.GetTempPath(), "terminalhell-autotest-save.txt");
                     if (game.StartLevel < 0) game.StartLevel = 0;
                     game.AutoTestIdle = argl.Contains("--idle");
                 }
@@ -133,6 +136,8 @@ namespace TerminalHell
         static int DevTool(List<string> a)
         {
             var inv = CultureInfo.InvariantCulture;
+            // the tools start levels, and starting a level autosaves: never over the player's own slot
+            SaveGame.PathOverride = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "terminalhell-devtool-save.txt");
             Tex.Build();
             Art.Build();
             MonsterDef.Build();
@@ -151,9 +156,9 @@ namespace TerminalHell
                     return 0;
                 case "--dev-weapons":
                     {
-                        // each weapon at rest, firing, mid-animation, and mid-parry, drawn exactly as in game (136x84 view)
-                        float[] times = { 9, 0.01f, 0.05f, 0.2f, 0.5f, 9 };
-                        float[] punch = { 9, 9, 9, 9, 9, 0.12f };
+                        // each weapon at rest, firing, and at four points of the parry swing, drawn exactly as in game (136x84 view)
+                        float[] times = { 9, 0.01f, 0.05f, 0.2f, 9, 9, 9, 9 };
+                        float[] punch = { 9, 9, 9, 9, 0.06f, 0.13f, 0.20f, 0.29f };
                         const int vw = 136, vh = 84;
                         var sheet = new int[vw * times.Length * vh * Player.Weapons];
                         var scr = new Screen();
@@ -314,7 +319,7 @@ namespace TerminalHell
                     }
                 case "--dev-end":
                     {
-                        // --dev-end out.png cols rows [intermission|victory|title] [seconds into the screen]
+                        // --dev-end out.png cols rows [intermission|victory|title|options|burn] [seconds into the screen]
                         var g = new Game(new Settings());
                         g.DebugEndScreen(int.Parse(a[2]), int.Parse(a[3]), a.Count > 4 ? a[4] : "intermission", a.Count > 5 ? float.Parse(a[5], inv) : 9f, a[1]);
                         return 0;
@@ -348,6 +353,22 @@ namespace TerminalHell
                             if (got != want[i]) failures++;
                         }
                         Console.WriteLine("default volumes: sound " + s.SfxVolume + ", music " + s.MusicVolume);
+
+                        // the update check only ever moves forward: a local build ahead of the published one is left alone
+                        string[][] versions =
+                        {
+                            new[] { "1.3.0", "1.2.0", "yes" }, new[] { "1.2.0", "1.3.0", "no" }, new[] { "1.2.0", "1.2.0", "no" },
+                            new[] { "1.10.0", "1.9.9", "yes" }, new[] { "2.0.0", "1.9.9", "yes" }, new[] { "1.2.1", "1.2.0", "yes" },
+                            new[] { "", "1.2.0", "no" }, new[] { "not a version", "1.2.0", "no" }, new[] { "v1.4.0", "1.3.9", "yes" },
+                        };
+                        foreach (var v in versions)
+                        {
+                            string got = Updater.IsNewer(v[0], v[1]) ? "yes" : "no";
+                            if (got == v[2]) continue;
+                            Console.WriteLine("is \"" + v[0] + "\" newer than " + v[1] + "? said " + got + ", expected " + v[2]);
+                            failures++;
+                        }
+                        Console.WriteLine("update version comparison: " + versions.Length + " cases checked");
                         return failures;
                     }
                 case "--dev-moves":
@@ -428,7 +449,124 @@ namespace TerminalHell
                             if (air == 0 && hpLost <= 0) { Console.WriteLine("  WRONG: standing in lava should burn"); bad++; }
                             if (air == 1 && hpLost > 0) { Console.WriteLine("  WRONG: lava should not reach a player in the air"); bad++; }
                         }
-                        Console.WriteLine(bad == 0 ? "parry and jump behave" : bad + " problem(s)");
+                        // soldiers are taller than the player: their shots have to come down to the middle of them
+                        {
+                            var w = new World(Levels.All()[0], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
+                            var ghoul = new Monster(MonsterDef.Ghoul, 8.5f, 7.5f);
+                            ghoul.Alert(w);
+                            w.Actors.Add(ghoul);
+                            int hpBefore = w.P.HP;
+                            var still = new PlayerInput();
+                            for (int f = 0; f < 300 && w.P.HP == hpBefore; f++) w.Update(1 / 30f, still);
+                            Console.WriteLine("shot at : the player took " + (hpBefore - w.P.HP) + " damage from a soldier six metres away");
+                            if (w.P.HP == hpBefore) { Console.WriteLine("  WRONG: the shots are missing the player entirely"); bad++; }
+                        }
+
+                        // a soldier's bullet passes through its friends; a rocket's blast does not
+                        for (int rocket = 0; rocket < 2; rocket++)
+                        {
+                            var w = new World(Levels.All()[0], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 8.5f; w.P.Y = 13.5f;
+                            var shooter = new Monster(MonsterDef.Ghoul, 8.5f, 8.5f);
+                            var friend = new Monster(MonsterDef.Ghoul, 8.5f, 10.5f);
+                            friend.Health = 500;   // so one shot can't finish it and hide the result
+                            w.Actors.Add(shooter);
+                            w.Actors.Add(friend);
+                            var shot = new Projectile(shooter, 8.5f, 9.0f, (float)(Math.PI / 2), 10, rocket == 1 ? Projectile.ROCKET : Projectile.BULLET);
+                            shot.DmgMin = 10; shot.DmgMax = 10;
+                            if (rocket == 1) { shot.SplashDamage = 60; shot.SplashRadius = 2.2f; }
+                            shot.Z = 0.45f;
+                            w.Add(shot);
+                            float before = friend.Health;
+                            var still = new PlayerInput();
+                            for (int f = 0; f < 20; f++) w.Update(1 / 30f, still);
+                            float lost = before - friend.Health;
+                            Console.WriteLine((rocket == 1 ? "rocket  " : "bullet  ") + ": the monster in the way took " + lost.ToString("0", inv) + " damage");
+                            if (rocket == 0 && lost > 0) { Console.WriteLine("  WRONG: a soldier's bullet should pass through its friends"); bad++; }
+                            if (rocket == 1 && lost <= 0) { Console.WriteLine("  WRONG: a rocket's blast should still catch them"); bad++; }
+                        }
+
+                        // the ray gun: holding the trigger winds it up, then it spends one cell and blows a hole in things
+                        {
+                            var w = new World(Levels.All()[0], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
+                            w.P.Has[5] = true; w.P.Weapon = 5; w.P.Ammo[3] = 2;
+                            var target = new Monster(MonsterDef.Brute, 8.5f, 10.5f);
+                            target.Health = 400;
+                            w.Actors.Add(target);
+                            var hold = new PlayerInput();
+                            hold.Fire = true;
+                            float charged = 0;
+                            for (int f = 0; f < 60; f++)
+                            {
+                                w.Update(1 / 30f, hold);
+                                charged = Math.Max(charged, w.P.Charge);
+                                if (w.P.Ammo[3] < 2) break;
+                            }
+                            for (int f = 0; f < 10; f++) w.Update(1 / 30f, new PlayerInput());
+                            Console.WriteLine("ray gun : wound up to " + charged.ToString("0.00", inv) + "s, cells left " + w.P.Ammo[3] +
+                                ", the target took " + (400 - target.Health).ToString("0", inv) + " damage");
+                            if (w.P.Ammo[3] != 1) { Console.WriteLine("  WRONG: one shot should spend exactly one cell"); bad++; }
+                            if (charged < Player.RayChargeTime * 0.8f) { Console.WriteLine("  WRONG: it should wind up before firing"); bad++; }
+                            if (400 - target.Health < 100) { Console.WriteLine("  WRONG: the bolt and its burst should hurt"); bad++; }
+                        }
+
+                        // the Warden: its laser follows the player, holds still for a second, and three rockets
+                        // then land on the spot the laser was resting on rather than on the player
+                        {
+                            var w = new World(Levels.All()[2], new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 21.5f; w.P.Y = 11.5f; w.P.Angle = (float)(-Math.PI / 2);
+                            var boss = new Monster(MonsterDef.Warden, 21.5f, 6.5f);
+                            boss.Alert(w);
+                            w.Actors.Add(boss);
+                            var strafe = new PlayerInput();
+                            strafe.Strafe = 1;      // keep moving: a laser that follows and one that holds then differ
+                            var seen = new List<int>();
+                            int rockets = 0, tracking = 0, holding = 0, drifted = 0, stuck = 0, offTarget = 0;
+                            float lockX = 0, lockY = 0;
+                            bool wasLocked = false;
+                            for (int f = 0; f < 300 && rockets < 3; f++)
+                            {
+                                w.Update(1 / 30f, strafe);
+                                if (boss.Aiming && !boss.AimLocked)
+                                {
+                                    tracking++;
+                                    wasLocked = false;
+                                    if (Math.Abs(boss.AimX - w.P.X) > 0.02f || Math.Abs(boss.AimY - w.P.Y) > 0.02f) stuck++;
+                                }
+                                else if (boss.Aiming)
+                                {
+                                    if (!wasLocked) { lockX = boss.AimX; lockY = boss.AimY; wasLocked = true; }
+                                    holding++;
+                                    if (Math.Abs(boss.AimX - lockX) > 0.001f || Math.Abs(boss.AimY - lockY) > 0.001f) drifted++;
+                                }
+                                foreach (var act in w.Actors)
+                                {
+                                    var pr = act as Projectile;
+                                    if (pr == null || pr.Owner != (Actor)boss || seen.Contains(pr.Tag)) continue;
+                                    seen.Add(pr.Tag);
+                                    rockets++;
+                                    float wx = lockX - boss.X, wy = lockY - boss.Y;
+                                    float wl = (float)Math.Sqrt(wx * wx + wy * wy), vl = (float)Math.Sqrt(pr.VX * pr.VX + pr.VY * pr.VY);
+                                    if (wl < 0.01f || vl < 0.01f || (wx * pr.VX + wy * pr.VY) / (wl * vl) < 0.999f) offTarget++;
+                                }
+                            }
+                            float heldSeconds = holding / 3f / 30f;
+                            Console.WriteLine("warden  : " + rockets + " rockets, the laser followed for " + (tracking / 30f).ToString("0.0", inv) +
+                                "s and held for " + heldSeconds.ToString("0.0", inv) + "s before each one");
+                            if (rockets < 3) { Console.WriteLine("  WRONG: the Warden should fire three rockets in one attack"); bad++; }
+                            if (stuck > 1) { Console.WriteLine("  WRONG: the laser should follow the player until it locks"); bad++; }
+                            if (drifted > 0) { Console.WriteLine("  WRONG: a locked laser should not move again"); bad++; }
+                            if (heldSeconds < Monster.AimLock * 0.8f) { Console.WriteLine("  WRONG: it should hold its aim for about a second"); bad++; }
+                            if (offTarget > 0) { Console.WriteLine("  WRONG: the rockets should fly at the spot the laser held"); bad++; }
+                        }
+
+                        Console.WriteLine(bad == 0 ? "parry, jump, shooting, the ray gun and the Warden behave" : bad + " problem(s)");
                         return bad;
                     }
                 case "--dev-save":
@@ -728,7 +866,7 @@ namespace TerminalHell
                 string tag = m != null ? m.Def.Code + " " + m.State + " " + m.Health.ToString("0", CultureInfo.InvariantCulture)
                     : it != null ? it.Code + (it.Dropped ? " dropped" : "")
                     : a.Health.ToString("0", CultureInfo.InvariantCulture);
-                list.Add(Pos(a.X, a.Y) + " " + tag);
+                list.Add(Pos(a.X, a.Y) + " z" + a.Z.ToString("0.00", CultureInfo.InvariantCulture) + " " + tag);
             }
             list.Sort(StringComparer.Ordinal);
             return list.Count + ": " + string.Join(" | ", list.ToArray());

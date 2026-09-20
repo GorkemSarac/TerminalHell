@@ -10,7 +10,7 @@ $install = Join-Path $root 'install.ps1'
 $current = (Select-String -Path $install -Pattern "^\s*\`$Repo = '([^']+)'").Matches[0].Groups[1].Value
 if (-not $current) { throw 'Could not find the current repository in install.ps1' }
 $utf8 = New-Object Text.UTF8Encoding $false
-foreach ($name in 'install.ps1', 'uninstall.ps1', 'README.md', 'linux\install.sh', 'linux\uninstall.sh', 'linux\README.md') {
+foreach ($name in 'install.ps1', 'uninstall.ps1', 'README.md', 'src\Updater.cs', 'linux\install.sh', 'linux\uninstall.sh', 'linux\README.md') {
     $file = Join-Path $root $name
     if (-not (Test-Path $file)) { continue }
     $text = [IO.File]::ReadAllText($file)

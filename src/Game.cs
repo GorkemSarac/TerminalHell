@@ -28,7 +28,12 @@ namespace TerminalHell
         Player carry;
         int levelIndex;
         bool quit, automap, wasFocused = true, fireLock;
-        float time, stateTime, introTime;
+        float time, animTime, stateTime, introTime;
+        string notice;                   // a short line under the menus: "SETTINGS RESET." and the like
+        float noticeTime;
+        int[] burnPix = new int[0];       // the frozen last frame of play, for the burn into the score screen
+        int burnW, burnH;
+        const float BurnTime = 1.1f;
         float fps, fpsAcc;
         int fpsFrames;
         DisplayMode lastMode;
@@ -181,12 +186,29 @@ namespace TerminalHell
             levelIndex = 0;
             statKills = 87; statItems = 64; statSecrets = 50; statScore = 12450; statTime = 214;
             totalKills = 120; totalKillsMax = 142; totalSecrets = 5; totalSecretsMax = 8; totalScore = 48350; totalTime = 731;
-            if (which == "title")
+            if (which == "title" || which == "options")
             {
-                S.BestScore = totalScore; S.BestTime = totalTime;
+                S.BestScore = totalScore; S.BestTime = totalTime; S.Beaten = true;
                 state = GState.Title;
                 menus.Clear();
                 menus.Add(MainMenu());
+                if (which == "options") menus.Add(OptionsMenu());
+            }
+            else if (which == "burn")
+            {
+                // a frame of play, frozen, part way through burning into the score screen (t = 0..1)
+                NewGame(0);
+                var inp = new PlayerInput();
+                for (float s = 0; s < 1.5f; s += 1 / 30f) { world.Update(1 / 30f, inp); introTime -= 1 / 30f; }
+                Draw(1 / 30f);
+                if (burnPix.Length != scr.Pix.Length) burnPix = new int[scr.Pix.Length];
+                Array.Copy(scr.Pix, burnPix, scr.Pix.Length);
+                burnW = scr.W; burnH = scr.H;
+                state = GState.Intermission;
+                stateTime = -BurnTime * (1 - Math.Max(0, Math.Min(1, t)));
+                Draw(1 / 30f);
+                DebugTools.SaveTerminalShot(scr, outPath);
+                return;
             }
             else state = which == "victory" ? GState.Victory : GState.Intermission;
             stateTime = t;
@@ -237,6 +259,7 @@ namespace TerminalHell
             }
 #endif
             Input.ClearKeys();
+            WriteSave();   // the start of every level is kept, so the title screen always offers the run back
         }
 
         void RestartLevel()
@@ -250,8 +273,13 @@ namespace TerminalHell
 
         void FinishLevel()
         {
+            // freeze the last frame of play: the score screen burns in from it
+            if (burnPix.Length != scr.Pix.Length) burnPix = new int[scr.Pix.Length];
+            Array.Copy(scr.Pix, burnPix, scr.Pix.Length);
+            burnW = scr.W; burnH = scr.H;
+            Audio.Play(Sfx.HurtFloor, 0.5f, 0, 0.65f, 0);
             state = GState.Intermission;
-            stateTime = 0;
+            stateTime = -BurnTime;
             statKills = world.TotalKills > 0 ? world.Kills * 100 / world.TotalKills : 100;
             statItems = world.TotalItems > 0 ? world.ItemsTaken * 100 / world.TotalItems : 100;
             statSecrets = world.TotalSecrets > 0 ? world.Secrets * 100 / world.TotalSecrets : 100;
@@ -271,9 +299,9 @@ namespace TerminalHell
         Menu MainMenu()
         {
             var m = new Menu("MAIN MENU");
-            m.Add("NEW GAME", () => menus.Add(DifficultyMenu()));
             var saved = SaveGame.ReadHeader();
-            if (saved != null) m.Add("CONTINUE  " + saved.Describe(levels), () => LoadSaved());
+            if (saved != null) m.Add("CONTINUE GAME  " + saved.Describe(levels), () => LoadSaved());
+            m.Add("NEW GAME", () => menus.Add(DifficultyMenu()));
             m.Add("OPTIONS", () => menus.Add(OptionsMenu()));
             m.Add("CONTROLS", () => menus.Add(ControlsMenu()));
             m.Add("QUIT", () => quit = true);
@@ -337,10 +365,34 @@ namespace TerminalHell
             m.AddValue("HEAD BOB", () => OnOff(S.HeadBob), d => S.HeadBob = !S.HeadBob);
             m.AddValue("SOUND VOLUME", () => Bar(S.SfxVolume, 10), d => { S.SfxVolume = Math.Max(0, Math.Min(10, S.SfxVolume + d)); ApplyVolumes(); Audio.Play(Sfx.Pistol, 0.6f, 0, 1, 0); });
             m.AddValue("MUSIC VOLUME", () => Bar(S.MusicVolume, 10), d => { S.MusicVolume = Math.Max(0, Math.Min(10, S.MusicVolume + d)); ApplyVolumes(); });
+            m.AddValue("PICKUP TEXT", () => S.BigPickupText ? "LARGE" : "SMALL", d => S.BigPickupText = !S.BigPickupText);
             m.AddValue("SHOW FPS", () => OnOff(S.ShowFps), d => S.ShowFps = !S.ShowFps);
+            m.AddValue("CHECK FOR UPDATES", () => OnOff(S.UpdateCheck), d => S.UpdateCheck = !S.UpdateCheck);
+            m.Items.Add(new MenuItem { Text = "", Spacer = true });
+            m.Add("RESET SETTINGS", () => menus.Add(ConfirmMenu("PUT EVERY SETTING BACK TO NORMAL?",
+                "SETTINGS RESET.", () => { S.ResetToDefaults(); ApplyVolumes(); Term.ApplyVideo(S); })));
+            m.Add("RESET SAVED GAME", () => menus.Add(ConfirmMenu("ERASE THE SAVED GAME AND ALL RECORDS?",
+                "SAVED GAME AND RECORDS ERASED.", () => { SaveGame.Delete(); S.ClearProgress(); RefreshRootMenu(); })));
             m.Items.Add(new MenuItem { Text = "", Spacer = true });
             m.Add("BACK", () => CloseTopMenu());
             m.OnBack = () => S.Save();
+            return m;
+        }
+
+        /// <summary>A yes/no box in front of anything that cannot be undone. NO is what it opens on.</summary>
+        Menu ConfirmMenu(string question, string done, Action act)
+        {
+            var m = new Menu("ARE YOU SURE?");
+            m.Lines = new[] { question };
+            m.Add("NO - LEAVE IT ALONE", () => CloseTopMenu());
+            m.Add("YES", () =>
+            {
+                act();
+                CloseTopMenu();
+                notice = done;
+                noticeTime = 3.5f;
+                if (world != null) world.Message(done, Col.Rgb(255, 200, 120));
+            });
             return m;
         }
 
@@ -372,9 +424,9 @@ namespace TerminalHell
         }
 
         /// <summary>Writes the one save slot: where you are, what you carry, and the state of the whole level.</summary>
-        void SaveNow()
+        bool WriteSave()
         {
-            if (world == null) return;
+            if (world == null) return false;
             var h = new SaveHeader
             {
                 Level = levelIndex,
@@ -383,7 +435,13 @@ namespace TerminalHell
                 TotalScore = totalScore, TotalTime = totalTime,
                 Difficulty = S.Difficulty,
             };
-            bool ok = SaveGame.Save(h, world);
+            return SaveGame.Save(h, world);
+        }
+
+        void SaveNow()
+        {
+            if (world == null) return;
+            bool ok = WriteSave();
             menus.Clear();
             Input.ClearKeys();
             world.Message(ok ? "GAME SAVED." : "COULD NOT WRITE THE SAVE FILE.", ok ? Col.Rgb(140, 255, 140) : Col.Rgb(255, 120, 60));
@@ -393,7 +451,11 @@ namespace TerminalHell
         void LoadSaved()
         {
             var h = SaveGame.ReadHeader();
-            if (h == null) return;
+            if (h == null)
+            {
+                if (world != null) world.Message("THERE IS NO SAVED GAME.", Col.Rgb(255, 120, 60));
+                return;
+            }
             S.Difficulty = h.Difficulty;   // the run keeps the difficulty it was started on
             var w = SaveGame.Load(h, levels, S);
             if (w == null)
@@ -419,6 +481,14 @@ namespace TerminalHell
             world.Message("GAME LOADED - " + levels[levelIndex].Id + ": " + levels[levelIndex].Name, Col.Rgb(140, 255, 140));
         }
 
+        /// <summary>Once the save has been thrown away the menu underneath must stop offering to load it.</summary>
+        void RefreshRootMenu()
+        {
+            if (menus.Count == 0) return;
+            if (state == GState.Title) menus[0] = MainMenu();
+            else if (state == GState.Playing) menus[0] = PauseMenu();
+        }
+
         void CloseTopMenu()
         {
             if (menus.Count == 0) return;
@@ -435,6 +505,9 @@ namespace TerminalHell
         {
             time += dt;
             stateTime += dt;
+            if (noticeTime > 0) noticeTime -= dt;
+            // the weapon and the world clock stop while a menu is up, so nothing moves in a paused frame
+            if (menus.Count == 0) animTime += dt;
             fire.Update(dt);
 
             if (Input.Hit(Input.VK_F5))
@@ -445,6 +518,8 @@ namespace TerminalHell
                 if (world != null) world.Message("DISPLAY: " + names[(int)S.Display], -1);
             }
             if (Input.Hit(Input.VK_F12)) Screenshot();
+            // a newer version has been published: U from the title screen hands over to the installer
+            if (state == GState.Title && Updater.Available && Input.Hit('U') && Updater.Install()) quit = true;
 
             if (menus.Count > 0)
             {
@@ -477,13 +552,12 @@ namespace TerminalHell
                             state = GState.Victory;
                             stateTime = 0;
                             Music.Play(0);
-                            // the episode is finished: keep the run if it beats the best one so far
-                            if (totalScore > S.BestScore)
-                            {
-                                S.BestScore = totalScore;
-                                S.BestTime = totalTime;
-                                S.Save();
-                            }
+                            // the episode is finished: the highest score and the fastest run are kept separately
+                            bool better = !S.Beaten;
+                            S.Beaten = true;
+                            if (totalScore > S.BestScore) { S.BestScore = totalScore; better = true; }
+                            if (S.BestTime <= 0 || totalTime < S.BestTime) { S.BestTime = totalTime; better = true; }
+                            if (better) S.Save();
                         }
                     }
                     break;
@@ -590,6 +664,7 @@ namespace TerminalHell
         void Draw(float dt)
         {
             scr.ClearText();
+            if (menus.Count > 0) dt = 0;   // a paused frame is a still frame
             switch (state)
             {
                 case GState.Title: DrawTitle(); break;
@@ -612,6 +687,8 @@ namespace TerminalHell
                 }
                 else m.Draw(scr, scr.Rows / 4, true);
             }
+            if (noticeTime > 0 && state != GState.Playing)
+                scr.PrintCenter(scr.Rows - 2, " " + notice + " ", Col.Rgb(255, 210, 130), Col.Rgb(40, 12, 8));
             if (S.ShowFps)
             {
                 string f = ((int)(fps + 0.5f)) + " FPS " + scr.Cols + "x" + scr.Rows;
@@ -644,10 +721,22 @@ namespace TerminalHell
             string sub = "A FIRST PERSON SHOOTER FOR YOUR TERMINAL";
             if (ty < scr.Rows) scr.PrintCenter(ty, sub, Col.Rgb(200, 150, 110), Screen.Transparent);
             // once the episode has been finished, the best run stays on the title screen
-            if (S.BestScore > 0 && ty + 1 < scr.Rows)
+            if ((S.BestScore > 0 || S.BestTime > 0) && ty + 1 < scr.Rows)
             {
-                scr.PrintCenter(ty + 1, "BEST SCORE " + Num(S.BestScore) + "   IN " + FormatTime(S.BestTime), Col.Rgb(255, 210, 120), Screen.Transparent);
+                string best = S.BestScore > 0 ? "BEST SCORE " + Num(S.BestScore) : "";
+                if (S.BestTime > 0) best += (best.Length > 0 ? "     " : "") + "BEST TIME " + FormatTime(S.BestTime);
+                scr.PrintCenter(ty + 1, best, Col.Rgb(255, 210, 120), Screen.Transparent);
                 titleBottom = ty + 2;
+            }
+            if (S.Beaten && titleBottom < scr.Rows)
+            {
+                scr.PrintCenter(titleBottom, "THE WARDEN HAS FALLEN ONCE", Col.Rgb(210, 120, 90), Screen.Transparent);
+                titleBottom++;
+            }
+            if (Updater.Available)
+            {
+                string up = " VERSION " + Updater.Newest + " IS OUT - PRESS U TO UPDATE ";
+                if (scr.Cols > up.Length + 2) scr.PrintCenter(Math.Max(0, scr.Rows - 3), up, Col.Rgb(255, 240, 200), Col.Rgb(90, 30, 10));
             }
             string foot = " WASD MOVE  -  MOUSE LOOK  -  CLICK FIRE  -  RIGHT CLICK PARRY  -  SPACE JUMP  -  E USE ";
             if (scr.Cols > foot.Length + 2) scr.PrintCenter(scr.Rows - 1, foot, Col.Rgb(230, 200, 170), Col.Rgb(24, 8, 6));
@@ -669,8 +758,8 @@ namespace TerminalHell
             // camera with screen shake
             float shake = p.ShakeAmt;
             cam.X = p.X; cam.Y = p.Y;
-            cam.Angle = p.Angle + (shake > 0 ? (float)(Math.Sin(time * 53) * 0.012 * shake) : 0);
-            cam.Pitch = (S.MouseLook ? p.Pitch : p.Pitch) + (shake > 0 ? (float)(Math.Sin(time * 71) * 0.02 * shake) : 0);
+            cam.Angle = p.Angle + (shake > 0 ? (float)(Math.Sin(animTime * 53) * 0.012 * shake) : 0);
+            cam.Pitch = (S.MouseLook ? p.Pitch : p.Pitch) + (shake > 0 ? (float)(Math.Sin(animTime * 71) * 0.02 * shake) : 0);
             cam.EyeZ = p.EyeZ;
             float phys = (scr.W / (float)Math.Max(1, viewH)) * Term.CellAspect;
             double baseHalf = S.Fov * Math.PI / 360;
@@ -684,6 +773,7 @@ namespace TerminalHell
             ren.Render(scr.Pix, scr.W, viewH, world.Map, cam, sprites, world.Lights, 0);
             // the centre of the screen is where shots go: its slope depends on how far the horizon is sheared
             p.AimSlope = (ren.Horizon - viewH * 0.5f) / ren.ProjY;
+            if (!automap) DrawBossLaser(viewH);
             if (!automap) DrawWeapon(viewH, dt);
             Hud.ScreenEffects(scr, world, viewH);
             if (automap) Hud.Automap(scr, world, viewH);
@@ -709,7 +799,7 @@ namespace TerminalHell
                 Hud.BigText(scr, "YOU DIED", viewH / 3, sc, Col.Rgb(255, 60, 40), Col.Rgb(120, 0, 0));
             }
 
-            Hud.DrawMessages(scr, world, viewRows);
+            Hud.DrawMessages(scr, world, viewRows, S.BigPickupText);
             if (p.Dead && p.DeadTime > 1.3f)
                 scr.PrintCenter(Math.Min(viewRows - 2, viewRows * 2 / 3), " PRESS FIRE OR ENTER TO TRY AGAIN ", Col.Rgb(255, 220, 200), Col.Rgb(60, 0, 0));
             if (automap)
@@ -730,6 +820,52 @@ namespace TerminalHell
                 for (int i = 0; i < bw; i++) scr.Put(bx + i, by, i < filled ? '█' : '░', i < filled ? Col.Rgb(220, 30, 20) : Col.Rgb(80, 30, 26), Col.Rgb(20, 4, 4));
             }
             Hud.DrawStatusBar(scr, world, viewRows, dt);
+        }
+
+        /// <summary>The Warden's sight: a red beam from its shoulder to the spot it is about to put a rocket on.
+        /// It follows the player, then stops dead for a second - that second is the warning.</summary>
+        void DrawBossLaser(int viewH)
+        {
+            int W = scr.W;
+            foreach (var a in world.Actors)
+            {
+                var mo = a as Monster;
+                if (mo == null || !mo.Aiming || !mo.Alive) continue;
+                float ax = mo.X, ay = mo.Y, az = mo.Z + mo.Def.Height * 0.62f;
+                float bx = mo.AimX, by = mo.AimY, bz = mo.AimZ;
+                float len = (float)Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+                if (len < 0.2f) continue;
+                float beat = mo.AimLocked ? 0.5f + 0.5f * (float)Math.Sin(world.Time * 30) : 0.25f;
+                int hot = Col.Lerp(Col.Rgb(210, 18, 10), Col.Rgb(255, 190, 160), beat);
+                int steps = Math.Max(16, (int)(len * 18));
+                for (int i = 0; i <= steps; i++)
+                {
+                    float t = 0.16f + (1 - 0.16f) * i / steps;     // starts clear of its own body
+                    float sx, sy, depth;
+                    if (!ren.Project(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, out sx, out sy, out depth)) continue;
+                    int x = (int)sx, y = (int)sy;
+                    if (x < 0 || x >= W || y < 0 || y >= viewH || depth >= ren.ZBuf[x]) continue;
+                    int i0 = y * W + x;
+                    scr.Pix[i0] = Col.Add(Col.Scale(scr.Pix[i0], 0.3f), hot);
+                    if (y + 1 < viewH) scr.Pix[i0 + W] = Col.Add(Col.Scale(scr.Pix[i0 + W], 0.75f), Col.Scale(hot, 0.35f));
+                }
+                // the spot itself, so it is obvious where the rocket is going to land
+                float mx, my, md;
+                if (!ren.Project(bx, by, bz, out mx, out my, out md) || md >= 40) continue;
+                float r = Math.Max(1.5f, 0.28f / md * ren.Proj);
+                for (int y = (int)(my - r); y <= (int)(my + r); y++)
+                {
+                    if (y < 0 || y >= viewH) continue;
+                    for (int x = (int)(mx - r); x <= (int)(mx + r); x++)
+                    {
+                        if (x < 0 || x >= W || md >= ren.ZBuf[x]) continue;
+                        float d = (float)Math.Sqrt((x - mx) * (x - mx) + (y - my) * (y - my) * Term.CellAspect * Term.CellAspect);
+                        if (d > r || d < r * 0.45f) continue;
+                        int i0 = y * W + x;
+                        scr.Pix[i0] = Col.Add(Col.Scale(scr.Pix[i0], 0.35f), Col.Scale(hot, 0.85f));
+                    }
+                }
+            }
         }
 
         void BuildSprites()
@@ -766,14 +902,48 @@ namespace TerminalHell
                 float d2 = (dl.X - p.X) * (dl.X - p.X) + (dl.Y - p.Y) * (dl.Y - p.Y);
                 if (d2 < dl.R * dl.R) l += (1 - d2 / (dl.R * dl.R)) * 0.3f;
             }
-            ViewModel.Draw(scr, viewH, p, dt, time, Term.CellAspect, Math.Min(1.4f, l));
+            ViewModel.Draw(scr, viewH, p, dt, animTime, Term.CellAspect, Math.Min(1.4f, l));
         }
+
+        /// <summary>The frozen last frame of play burning away from the bottom up, into the score screen.</summary>
+        void DrawBurn(float k)
+        {
+            int W = scr.W, H = scr.H;
+            int ember = Col.Rgb(255, 238, 180), fireCol = Col.Rgb(225, 70, 12), ash = Col.Rgb(16, 7, 6);
+            for (int y = 0; y < H; y++)
+            {
+                float row = 1 - (float)y / H;             // the floor catches first, the ceiling goes last
+                for (int x = 0; x < W; x++)
+                {
+                    int i = y * W + x;
+                    float edge = row * 0.72f + Noise.Fbm(x, y, 13, 4, 3, 21) * 0.22f + Noise.Hashf(x, y, 7) * 0.06f;
+                    float burn = k * 1.3f - edge;
+                    if (burn <= 0) { scr.Pix[i] = burnPix[i]; continue; }
+                    if (burn < 0.18f)
+                    {
+                        int hot = Col.Lerp(ember, fireCol, burn / 0.18f);
+                        scr.Pix[i] = Col.Add(Col.Scale(burnPix[i], 0.35f), hot);
+                    }
+                    else scr.Pix[i] = Col.Lerp(ash, Col.Rgb(10, 3, 3), Math.Min(1, (burn - 0.18f) * 3));
+                }
+            }
+            // the fire grows into exactly the band the score screen uses, so nothing jumps when the burn ends
+            fire.Draw(scr, H - (int)(H * (0.16f + (EndFireHeight - 0.16f) * k)), H, EndFireStrength * Math.Min(1, k * 1.6f));
+        }
+
+        // where the fire sits on the screens after a level: the burn transition grows into the same band
+        const float EndFireHeight = 1f / 3f, EndFireStrength = 0.6f;
 
         void DrawIntermission()
         {
+            if (stateTime < 0 && burnW == scr.W && burnH == scr.H && burnPix.Length == scr.Pix.Length)
+            {
+                DrawBurn(1 + stateTime / BurnTime);
+                return;
+            }
             int W = scr.W, H = scr.H;
             for (int i = 0; i < W * H; i++) scr.Pix[i] = Col.Rgb(10, 3, 3);
-            fire.Draw(scr, H * 2 / 3, H, 0.6f);
+            fire.Draw(scr, H - (int)(H * EndFireHeight), H, EndFireStrength);
             var def = levels[levelIndex];
             int sc = Math.Max(1, Math.Min(4, W / 70));
             Hud.BigText(scr, def.Id + " COMPLETE", 3, sc, Col.Rgb(255, 230, 150), Col.Rgb(200, 40, 16));

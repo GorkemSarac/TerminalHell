@@ -24,7 +24,7 @@ namespace TerminalHell
             new WeaponDef { Name = "SHOTGUN", Slot = 3, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
             new WeaponDef { Name = "MINIGUN", Slot = 4, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
             new WeaponDef { Name = "LAUNCHER", Slot = 5, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
-            new WeaponDef { Name = "RAY GUN", Slot = 6, Ammo = 3, Cooldown = 0.5f, DmgMin = 55, DmgMax = 90, Ray = true, Sound = Sfx.RayGun, Anim = 0.45f },
+            new WeaponDef { Name = "RAY GUN", Slot = 6, Ammo = 3, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
         };
     }
 
@@ -43,7 +43,7 @@ namespace TerminalHell
         public float Angle, Pitch, VX, VY;
         public int HP = 100, Armor, ArmorType;
         public readonly int[] Ammo = new int[AmmoTypes];
-        public static readonly int[] MaxAmmo = { 200, 50, 50, 60 };
+        public static readonly int[] MaxAmmo = { 200, 50, 50, 12 };
         public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT", "SOUL" };
         public readonly bool[] Has = new bool[Weapons];
         public readonly bool[] Keys = new bool[4];
@@ -63,9 +63,12 @@ namespace TerminalHell
         public float MuzzleTime;
         public float VZ;          // jumping: Z is how high the feet are off the floor
         public bool OnGround = true;
-        public float ParryTime;   // > 0: a fist is out and projectiles that reach it are knocked back
+        public float ParryTime;   // > 0: the weapon is swung out and projectiles that reach it are knocked back
         public float ParryCool;
         public float PunchAnim = 9;
+        public float Charge;      // the ray gun winds up while the trigger is held
+
+        public const float RayChargeTime = 1.2f;
 
         // a hop of about a third of a metre: enough to clear a lava tile with a run-up, never enough to reach the ceiling
         public const float JumpSpeed = 2.9f, Gravity = 12f, MaxJumpZ = 0.4f;
@@ -259,7 +262,31 @@ namespace TerminalHell
             Cooldown -= dt;
             FireAnim += dt;
             if (!inp.Fire) { dryClicked = false; Refire = 0; }
-            if (inp.Fire && Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f)
+            if (Def.Ray)
+            {
+                // the ray gun winds up while the trigger is held, then lets go by itself
+                bool ready = Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f;
+                if (inp.Fire && ready && HasAmmoFor(Weapon))
+                {
+                    if (Charge <= 0) Audio.Play(Sfx.RayGun, 0.85f, 0, 0.55f, 0);   // the winding whine
+                    Charge += dt;
+                    if (Charge >= RayChargeTime)
+                    {
+                        Charge = 0;
+                        Ammo[Def.Ammo]--;
+                        Cooldown = Def.Cooldown;
+                        FireAnim = 0;
+                        MuzzleTime = 0.12f;
+                        w.PlayerRay(this, Def);
+                    }
+                }
+                else
+                {
+                    if (inp.Fire && ready && !dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
+                    Charge = Math.Max(0, Charge - dt * 2.5f);
+                }
+            }
+            else if (inp.Fire && Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f)
             {
                 var d = Def;
                 if (!HasAmmoFor(Weapon))
@@ -342,8 +369,8 @@ namespace TerminalHell
                 case 'S': GiveWeapon(w, 2, 1, 8, "YOU GOT THE SHOTGUN!"); break;
                 case 'N': GiveWeapon(w, 3, 0, 20, "YOU GOT THE MINIGUN!"); break;
                 case 'L': GiveWeapon(w, 4, 2, 2, "YOU GOT THE ROCKET LAUNCHER!"); break;
-                case 'W': GiveWeapon(w, 5, 3, 12, "YOU GOT THE RAY GUN! IT IS WARM."); break;
-                case 'w': if (!AddAmmo(3, (int)(8 * am))) return false; w.Message("PICKED UP SOUL CELLS.", Col.Rgb(255, 150, 230)); break;
+                case 'W': GiveWeapon(w, 5, 3, 2, "YOU GOT THE RAY GUN! IT IS WARM."); break;
+                case 'w': if (!AddAmmo(3, 1)) return false; w.Message("PICKED UP A SOUL CELL.", Col.Rgb(255, 150, 230)); break;
                 case 'r': Keys[1] = true; w.Message("PICKED UP A RED KEYCARD.", Col.Rgb(255, 80, 60)); Audio.Play(Sfx.KeyPickup); break;
                 case 'b': Keys[2] = true; w.Message("PICKED UP A BLUE KEYCARD.", Col.Rgb(90, 150, 255)); Audio.Play(Sfx.KeyPickup); break;
                 case 'y': Keys[3] = true; w.Message("PICKED UP A YELLOW KEYCARD.", Col.Rgb(255, 220, 60)); Audio.Play(Sfx.KeyPickup); break;
@@ -373,7 +400,8 @@ namespace TerminalHell
         {
             bool had = Has[wi];
             Has[wi] = true;
-            Ammo[ammoType] = Math.Min(MaxAmmo[ammoType], Ammo[ammoType] + (int)(ammo * w.AmmoMul));
+            // soul cells are rationed: the difficulty's ammo bonus doesn't apply to them
+            Ammo[ammoType] = Math.Min(MaxAmmo[ammoType], Ammo[ammoType] + (ammoType == 3 ? ammo : (int)(ammo * w.AmmoMul)));
             w.Message(msg, Col.Rgb(255, 230, 120));
             Audio.Play(Sfx.WeaponPickup);
             GrinTime = 2.5f;

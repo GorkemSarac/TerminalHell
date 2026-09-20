@@ -90,7 +90,7 @@ namespace TerminalHell
             Warden = new MonsterDef
             {
                 Name = "WARDEN", Code = 'K', Health = 1400, Speed = 1.3f, Radius = 0.62f, PainChance = 0.08f, Attack = AttackType.Rockets,
-                Range = 30, WindUp = 0.9f, CoolMin = 1.8f, CoolMax = 3.0f, DmgMin = 30, DmgMax = 60, Shots = 2, ProjSpeed = 9,
+                Range = 30, WindUp = 1.65f, CoolMin = 1.8f, CoolMax = 3.0f, DmgMin = 30, DmgMax = 60, Shots = 3, ProjSpeed = 9,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.Rocket, Frames = Art.Warden,
                 Scale = 1f / 58, Boss = true, Drop = 'y', DropChance = 1f, Score = 5000,   // the key it carries always drops
             };
@@ -118,6 +118,10 @@ namespace TerminalHell
         public MState State = MState.Idle;
         public float StateTime, Cooldown, Anim, SightTimer, StrafeTimer, GrowlTimer, StepTimer;
         public float Angle;
+        public float AimX, AimY, AimZ;   // where the boss's sight laser rests, and what it fires at
+        public bool Aiming, AimLocked;
+        /// <summary>How long the boss holds its aim still before the rocket leaves: time enough to get out of the way.</summary>
+        public const float AimLock = 1.0f;
         public int StrafeDir = 1;
         public int ShotsLeft;
         public bool Ambush;
@@ -207,6 +211,7 @@ namespace TerminalHell
             var p = w.P;
             float dx = p.X - X, dy = p.Y - Y;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (State != MState.WindUp) Aiming = false;   // the sight laser only burns while the boss is taking aim
             switch (State)
             {
                 case MState.Dying:
@@ -229,6 +234,13 @@ namespace TerminalHell
                 case MState.WindUp:
                     Angle = (float)Math.Atan2(dy, dx);
                     StateTime -= dt;
+                    if (Def.Boss && Def.Attack != AttackType.Melee)
+                    {
+                        // the sight follows the player, then holds dead still for the last second before it fires
+                        Aiming = true;
+                        AimLocked = StateTime <= AimLock;
+                        if (!AimLocked) { AimX = p.X; AimY = p.Y; AimZ = p.Z + 0.35f; }
+                    }
                     if (StateTime <= 0)
                     {
                         PerformAttack(w, dist);
@@ -244,7 +256,7 @@ namespace TerminalHell
                         {
                             ShotsLeft--;
                             State = MState.WindUp;
-                            StateTime = Def.Boss ? 0.45f : 0.2f;
+                            StateTime = Def.Boss ? AimLock + 0.2f : 0.2f;
                         }
                         else
                         {
@@ -414,13 +426,21 @@ namespace TerminalHell
             }
             else
             {
-                float spread = (float)(w.Rng.NextDouble() - 0.5) * (Def.ProjType == Projectile.BULLET ? 0.05f : 0.08f);
+                // the boss fires at the spot its laser was resting on, not at wherever the player has got to since
+                float tx = p.X, ty = p.Y, tz = p.Z + 0.3f;
+                if (Def.Boss && Aiming) { tx = AimX; ty = AimY; tz = AimZ; }
+                float aim = (float)Math.Atan2(ty - Y, tx - X);
+                float spread = Def.Boss ? 0 : (float)(w.Rng.NextDouble() - 0.5) * (Def.ProjType == Projectile.BULLET ? 0.05f : 0.08f);
                 int ptype = Def.Attack == AttackType.Rockets ? Projectile.ROCKET : Def.ProjType;
-                var pr = new Projectile(this, X + (float)Math.Cos(ang) * (Radius + 0.1f), Y + (float)Math.Sin(ang) * (Radius + 0.1f), ang + spread,
+                var pr = new Projectile(this, X + (float)Math.Cos(aim) * (Radius + 0.1f), Y + (float)Math.Sin(aim) * (Radius + 0.1f), aim + spread,
                     Def.ProjSpeed * w.ProjSpeedMul, ptype);
                 pr.DmgMin = Def.DmgMin; pr.DmgMax = Def.DmgMax;
                 if (ptype == Projectile.BULLET) pr.Z = Math.Max(0.25f, Def.Height * 0.72f);   // out of the rifle, roughly chest high
                 if (Def.Boss) { pr.Z = 0.55f; pr.SplashDamage = 60; pr.SplashRadius = 2.2f; }
+                // these things are taller than the player: aim down at the middle of them, not over their head
+                float reach = (float)Math.Sqrt((tx - X) * (tx - X) + (ty - Y) * (ty - Y));
+                float travel = Math.Max(0.3f, reach) / Math.Max(1f, Def.ProjSpeed * w.ProjSpeedMul);
+                pr.VZ = (tz - pr.Z) / travel;
                 w.Add(pr);
             }
         }

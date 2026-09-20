@@ -236,12 +236,25 @@ namespace TerminalHell
                 case 4: ox = 0.14f; oy = -0.115f; oz = 0.5f; break;
                 case 5: ox = 0.128f; oy = -0.1f; oz = 0.44f; break;
             }
-            var root = Mat.Translate(ox + bx - p.SwayX * 0.04f, oy + by - sw * 0.2f + recoil * 0.008f, oz - recoil * 0.028f);
+            // the parry: a backhand bash that winds the weapon in, then sweeps it out to the right
+            float arc = SwingArc(p.PunchAnim);
+            var root = Mat.Translate(ox + bx - p.SwayX * 0.04f + arc * 0.04f, oy + by - sw * 0.2f + recoil * 0.008f + Math.Abs(arc) * 0.03f, oz - recoil * 0.028f + arc * 0.07f);
             // aim so the barrel line meets the crosshair a few metres ahead, then add recoil tip and lowering
             root = root.Mul(Mat.RotY(-0.2f + p.SwayX * 0.08f));
             root = root.Mul(Mat.RotX(0.05f + kickUp * 0.12f - sw * 0.7f));
             root = root.Mul(Mat.RotZ(-0.1f - p.SwayX * 0.05f));
             root = root.Mul(Mat.Scale(1.0f));
+            // the swing turns about the butt of the weapon, so the whole thing sweeps across
+            // in one arc instead of spinning about its middle
+            if (arc != 0)
+            {
+                const float px = 0.015f, py = -0.075f, pz = -0.13f;
+                var sweep = Mat.Translate(px, py, pz);
+                sweep = sweep.Mul(Mat.RotY(arc * 0.5f));
+                sweep = sweep.Mul(Mat.RotZ(arc * -0.22f));
+                sweep = sweep.Mul(Mat.RotX(arc * -0.1f));
+                root = root.Mul(sweep.Mul(Mat.Translate(-px, -py, -pz)));
+            }
 
             mb.Clear();
             V3 muzzle;
@@ -252,10 +265,8 @@ namespace TerminalHell
                 case 2: muzzle = BuildShotgun(root, t); break;
                 case 3: muzzle = BuildMinigun(root, spin); break;
                 case 4: muzzle = BuildLauncher(root, t); break;
-                default: muzzle = BuildRayGun(root, t, time); break;
+                default: muzzle = BuildRayGun(root, t, time, Math.Min(1, p.Charge / Player.RayChargeTime)); break;
             }
-            // the parry jab: the free hand comes in from the left, whatever is being held
-            if (p.PunchAnim < 0.36f) BuildParryFist(p.PunchAnim, p.ParryTime > 0);
 
             // ---- rasterize
             // size the weapon by the view height so it looks the same in wide or tall windows
@@ -290,6 +301,27 @@ namespace TerminalHell
             return (float)Math.Exp(-(t - rise) * decay);
         }
 
+        static float Smooth(float k) { return k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k); }
+
+        /// <summary>The parry swing over its 0.36s: a short wind-up inwards (negative), a sweep out to the right
+        /// (positive), then back to where the weapon is held.</summary>
+        static float SwingArc(float t)
+        {
+            if (t < 0 || t >= 0.36f) return 0;
+            float u = t / 0.36f;
+            if (u < 0.22f) return -0.35f * Smooth(u / 0.22f);
+            if (u < 0.5f) return -0.35f + 1.35f * Smooth((u - 0.22f) / 0.28f);
+            return 1 - Smooth((u - 0.5f) / 0.5f);
+        }
+
+        /// <summary>A direction given in camera space, written in the local frame of m (whose rotation is orthonormal).</summary>
+        static V3 ToLocal(Mat m, V3 d)
+        {
+            return new V3(m.A * d.X + m.D * d.Y + m.G * d.Z,
+                          m.B * d.X + m.E * d.Y + m.H * d.Z,
+                          m.C * d.X + m.F * d.Y + m.I * d.Z);
+        }
+
         // ------------------------------------------------------------------ models (local: x right, y up, z forward)
 
         static void Hand(Mat m, float x, float y, float z, bool rightHand)
@@ -308,7 +340,10 @@ namespace TerminalHell
             V3 dir = (elbow - wrist).Norm();
             mb.Cyl(wrist - dir * 0.01f, wrist + dir * 0.03f, 0.026f, 0.027f, 8, Col.Scale(Glove, 0.8f), false);
             mb.Cyl(wrist + dir * 0.03f, elbow, 0.029f, 0.036f, 8, Sleeve, false);
-            mb.Cyl(elbow, elbow + dir * 0.25f, 0.036f, 0.044f, 8, Col.Scale(Sleeve, 0.85f), false);
+            // whatever the weapon is doing, the rest of the arm leaves through the bottom right corner and
+            // ends behind the camera: a swing never leaves a cut-off stump hanging in the middle of the view
+            V3 away = ToLocal(m, new V3(0.34f, -0.62f, -0.71f)).Norm();
+            mb.Cyl(elbow, elbow + away * 0.9f, 0.036f, 0.052f, 8, Col.Scale(Sleeve, 0.85f), false);
         }
 
         static V3 BuildPistol(Mat m)
@@ -418,12 +453,14 @@ namespace TerminalHell
         }
 
         /// <summary>The ray gun: a spine of bone and sinew with something burning caged inside it.</summary>
-        static V3 BuildRayGun(Mat m, float t, float time)
+        static V3 BuildRayGun(Mat m, float t, float time, float charge)
         {
             int bone = Col.Rgb(186, 174, 148), boneDark = Col.Rgb(118, 108, 88), meat = Col.Rgb(104, 26, 34);
             float heat = t < 0.3f ? 1 - t / 0.3f : 0;
-            float pulse = 0.5f + 0.5f * (float)Math.Sin(time * 5);
-            int ember = Col.Lerp(Col.Rgb(214, 36, 120), Col.Rgb(255, 220, 255), Math.Min(1, heat + pulse * 0.25f));
+            // while the trigger is held the core winds up: brighter, bigger, and shaking faster
+            float pulse = 0.5f + 0.5f * (float)Math.Sin(time * (5 + charge * 60));
+            int ember = Col.Lerp(Col.Rgb(214, 36, 120), Col.Rgb(255, 235, 255), Math.Min(1, heat + pulse * (0.25f + charge * 0.5f) + charge * 0.55f));
+            float grow = 1 + charge * 0.5f;
             mb.M = m;
             // a spine of vertebrae, thinner than a rifle and knobbly all the way along
             mb.Cyl(new V3(0, 0.026f, -0.02f), new V3(0, 0.026f, 0.62f), 0.013f, 0.011f, 8, meat, true);
@@ -436,7 +473,7 @@ namespace TerminalHell
                 if (k % 2 == 0) mb.Box(0, 0.026f - r - 0.006f, z + 0.018f, 0.004f, 0.008f, 0.012f, meat);   // sinew underneath
             }
             // the core sits open between two ribs, right above the hand
-            mb.Ball(0, 0.03f, 0.105f, 0.033f, 0.033f, 0.038f, ember, true);
+            mb.Ball(0, 0.03f, 0.105f, 0.033f * grow, 0.033f * grow, 0.038f * grow, ember, true);
             for (int k = 0; k < 5; k++)
             {
                 double a = -0.5 + k * 0.72;
@@ -445,7 +482,7 @@ namespace TerminalHell
             }
             // the mouth: four claws around a burning throat
             mb.Cyl(new V3(0, 0.026f, 0.6f), new V3(0, 0.026f, 0.645f), 0.026f, 0.034f, 8, boneDark, false);
-            mb.Ball(0, 0.026f, 0.636f, 0.02f, 0.02f, 0.012f, Col.Lerp(Col.Rgb(160, 22, 80), Col.Rgb(255, 210, 255), Math.Min(1, heat + 0.25f)), true);
+            mb.Ball(0, 0.026f, 0.636f, 0.02f * grow, 0.02f * grow, 0.012f, Col.Lerp(Col.Rgb(160, 22, 80), Col.Rgb(255, 210, 255), Math.Min(1, heat + 0.25f + charge * 0.7f)), true);
             for (int k = 0; k < 4; k++)
             {
                 double a = k * Math.PI / 2 + 0.7;
@@ -459,19 +496,6 @@ namespace TerminalHell
             Hand(grip, 0.002f, -0.046f, -0.004f, true);
             Arm(grip, new V3(0.005f, -0.072f, -0.03f), new V3(0.05f, -0.155f, -0.16f));
             return m.Point(new V3(0, 0.03f, 0.66f));
-        }
-
-        /// <summary>The free hand thrown out for a parry, drawn over whatever is being held.</summary>
-        static void BuildParryFist(float t, bool active)
-        {
-            float e = (float)Math.Sin(Math.PI * Math.Min(1, t / 0.34f));   // out and back
-            int glove = active ? Col.Lerp(Glove, Col.Rgb(255, 235, 200), 0.3f) : Glove;
-            var fist = Mat.Translate(-0.16f + 0.1f * e, -0.14f + 0.085f * e, 0.24f + 0.27f * e).Mul(Mat.RotY(0.5f - 0.5f * e)).Mul(Mat.RotZ(0.3f));
-            mb.M = fist;
-            mb.Box(0, 0, 0, 0.031f, 0.028f, 0.031f, glove);
-            for (int k = 0; k < 4; k++) mb.Ball(-0.021f + k * 0.014f, 0.004f, 0.031f, 0.0085f, 0.013f, 0.009f, Col.Scale(glove, 1.06f));
-            mb.Box(0.031f, -0.01f, 0.012f, 0.008f, 0.009f, 0.02f, glove);
-            Arm(fist, new V3(-0.005f, -0.012f, -0.03f), new V3(-0.06f, -0.09f, -0.18f));
         }
 
         static V3 BuildFists(Mat m, float t)

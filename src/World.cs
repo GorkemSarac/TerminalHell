@@ -112,18 +112,27 @@ namespace TerminalHell
             throw new InvalidOperationException("Unknown map character '" + c + "' at " + x + "," + y + " in " + Def.Id);
         }
 
+        public const float PedestalScale = 1f / 52;
+
+        /// <summary>How high a weapon sits when it is displayed on a pedestal.</summary>
+        public static float PedestalTop { get { return Art.Pedestal.H * PedestalScale; } }
+
+        /// <summary>Weapons left in the level stand on a lit pedestal; ones dropped by the dead lie where they fall.</summary>
+        public static bool OnPedestal(char c, bool dropped)
+        {
+            return !dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W');
+        }
+
         public void SpawnItem(char c, float x, float y, bool dropped)
         {
             var it = new Item(c, x, y);
             it.Dropped = dropped;
-            // weapons left in the level stand on a lit pedestal, so they read as something worth walking to
-            if (!dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W'))
+            if (OnPedestal(c, dropped))
             {
-                const float PedestalScale = 1f / 52;
                 var ped = new Decor(Art.Pedestal, x, y, false, 0.3f);
                 ped.Scale = PedestalScale;
                 Add(ped);
-                it.Z = Art.Pedestal.H * PedestalScale;
+                it.Z = PedestalTop;
                 Map.AddLight(x, y, 3.2f, 0.5f, Col.Rgb(255, 200, 120));
             }
             Add(it);
@@ -421,7 +430,7 @@ namespace TerminalHell
                 Map.WallTex[i] = Tex.EXIT_ON;
                 Audio.Play(Sfx.Switch);
                 ExitTriggered = true;
-                exitTimer = 1.2f;
+                exitTimer = 0.1f;   // the switch clunks down and the level is over
             }
         }
 
@@ -445,7 +454,7 @@ namespace TerminalHell
                 }
                 else { Hint = "[E] OPEN DOOR"; HintColor = Col.Rgb(240, 230, 200); }
             }
-            else if (k == CellKind.Wall && Map.WallTex[cy * Map.W + cx] == Tex.EXIT_OFF)
+            else if (k == CellKind.Wall && Map.In(cx, cy) && Map.WallTex[cy * Map.W + cx] == Tex.EXIT_OFF)
             {
                 Hint = "[E] EXIT LEVEL"; HintColor = Col.Rgb(120, 255, 120);
             }
@@ -630,9 +639,13 @@ namespace TerminalHell
                 float rr = pr.Radius + P.Radius;
                 if ((pr.X - P.X) * (pr.X - P.X) + (pr.Y - P.Y) * (pr.Y - P.Y) < rr * rr) return P;
             }
+            // a monster's own shot flies straight through its friends; only blasts hurt them (and anything parried back)
+            bool fromMonster = pr.Owner != null && pr.Owner.Kind == ActorKind.Monster;
+            bool blast = pr.SplashRadius > 0 || pr.Type == Projectile.ROCKET;
             foreach (var a in Actors)
             {
                 if (!a.Shootable || a == pr.Owner) continue;
+                if (fromMonster && !blast && a.Kind == ActorKind.Monster) continue;
                 if (cz < a.Z - 0.1f || cz > a.Z + a.Height + 0.1f) continue;
                 float rr = pr.Radius + a.Radius;
                 if ((pr.X - a.X) * (pr.X - a.X) + (pr.Y - a.Y) * (pr.Y - a.Y) < rr * rr) return a;
@@ -671,6 +684,51 @@ namespace TerminalHell
                 Shake(Math.Min(1, 3.5f / (1 + sd * sd * 0.25f)));
             }
             Noise(x, y);
+        }
+
+        /// <summary>The ray gun's shot: an instant beam of hell light, and a heavy burst where it lands.</summary>
+        public void PlayerRay(Player p, WeaponDef d)
+        {
+            float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+            float slope = p.AimSlope, z = p.EyeZ - 0.05f;
+            const float range = 40;
+            float best = Map.RayCast(p.X, p.Y, dx, dy, range);
+            if (slope < -0.001f) best = Math.Min(best, z / -slope);
+            else if (slope > 0.001f) best = Math.Min(best, (1 - z) / slope);
+
+            Actor hit = null;
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable) continue;
+                float ox = a.X - p.X, oy = a.Y - p.Y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0 || t > best + a.Radius) continue;
+                float perp2 = ox * ox + oy * oy - t * t;
+                float r = a.Radius + 0.1f;
+                if (perp2 > r * r) continue;
+                float th = t - (float)Math.Sqrt(Math.Max(0, r * r - perp2));
+                if (th >= best) continue;
+                float zt = z + slope * th;
+                if (zt < a.Z - 0.12f || zt > a.Z + a.Height + 0.12f) continue;
+                best = th; hit = a;
+            }
+
+            // the beam: a line of hot motes that fade almost at once
+            int steps = Math.Max(2, (int)(best * 4));
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = best * i / steps;
+                var mote = new Effect(Art.RayBolt, p.X + dx * t, p.Y + dy * t, z + slope * t - 0.05f, 0.14f + 0.06f * (1 - (float)i / steps));
+                mote.Scale = 1f / 190;
+                mote.Glow = true;
+                Add(mote);
+            }
+            AddLight(p.X + dx * 0.6f, p.Y + dy * 0.6f, 5f, 1.3f, 0.5f, 1.1f);
+            Noise(p.X, p.Y);
+            if (hit != null) hit.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1), p, false);
+            // and the burst at the far end
+            float bx = p.X + dx * Math.Max(0.4f, best - 0.2f), by = p.Y + dy * Math.Max(0.4f, best - 0.2f);
+            Explode(bx, by, Math.Max(0.05f, Math.Min(0.95f, z + slope * best)), 130, 3.1f, p);
         }
 
         /// <summary>A punch: hits the first thing within reach in front of the player.</summary>

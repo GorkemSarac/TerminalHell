@@ -520,10 +520,121 @@ namespace TerminalHell
             }
         }
 
-        static void PutPix(int[] pix, int pw, int ph, int x, int y, int c, float alpha)
+        internal static void PutPix(int[] pix, int pw, int ph, int x, int y, int c, float alpha)
         {
             if (x < 0 || y < 0 || x >= pw || y >= ph) return;
             pix[y * pw + x] = alpha >= 1 ? c : Col.Lerp(pix[y * pw + x], c, alpha);
+        }
+    }
+
+    /// <summary>A smaller 4x5 pixel font, used for pickup messages: clearly bigger than a line of terminal
+    /// text, without the titles' 7 pixel letters taking over the top of the screen.</summary>
+    static class MiniFont
+    {
+        static readonly Dictionary<char, byte[]> glyphs = new Dictionary<char, byte[]>();
+
+        static MiniFont()
+        {
+            string[] defs =
+            {
+                "A 0110 1001 1111 1001 1001",
+                "B 1110 1001 1110 1001 1110",
+                "C 0111 1000 1000 1000 0111",
+                "D 1110 1001 1001 1001 1110",
+                "E 1111 1000 1110 1000 1111",
+                "F 1111 1000 1110 1000 1000",
+                "G 0111 1000 1011 1001 0111",
+                "H 1001 1001 1111 1001 1001",
+                "I 1110 0100 0100 0100 1110",
+                "J 0011 0001 0001 1001 0110",
+                "K 1001 1010 1100 1010 1001",
+                "L 1000 1000 1000 1000 1111",
+                "M 1001 1111 1111 1001 1001",
+                "N 1001 1101 1011 1001 1001",
+                "O 0110 1001 1001 1001 0110",
+                "P 1110 1001 1110 1000 1000",
+                "Q 0110 1001 1001 1011 0111",
+                "R 1110 1001 1110 1010 1001",
+                "S 0111 1000 0110 0001 1110",
+                "T 1111 0100 0100 0100 0100",
+                "U 1001 1001 1001 1001 0110",
+                "V 1001 1001 1001 1010 0100",
+                "W 1001 1001 1111 1111 0110",
+                "X 1001 1001 0110 1001 1001",
+                "Y 1001 1001 0110 0100 0100",
+                "Z 1111 0010 0100 1000 1111",
+                "0 0110 1011 1101 1001 0110",
+                "1 0100 1100 0100 0100 1110",
+                "2 1110 0001 0110 1000 1111",
+                "3 1110 0001 0110 0001 1110",
+                "4 1001 1001 1111 0001 0001",
+                "5 1111 1000 1110 0001 1110",
+                "6 0110 1000 1110 1001 0110",
+                "7 1111 0001 0010 0100 0100",
+                "8 0110 1001 0110 1001 0110",
+                "9 0110 1001 0111 0001 0110",
+                "! 0100 0100 0100 0000 0100",
+                "? 1110 0001 0110 0000 0100",
+                ". 0000 0000 0000 0000 0100",
+                ", 0000 0000 0000 0100 1000",
+                ": 0000 0100 0000 0100 0000",
+                "- 0000 0000 1111 0000 0000",
+                "' 0100 0100 0000 0000 0000",
+                "+ 0000 0100 1110 0100 0000",
+                "% 1001 0010 0100 1000 1001",
+                "/ 0001 0010 0100 1000 1000",
+                "_ 0000 0000 0000 0000 1111",
+            };
+            foreach (var d in defs)
+            {
+                var parts = d.Split(' ');
+                var rows = new byte[5];
+                for (int i = 0; i < 5; i++) rows[i] = Convert.ToByte(parts[i + 1], 2);
+                glyphs[parts[0][0]] = rows;
+            }
+            glyphs[' '] = new byte[5];
+        }
+
+        public const int Height = 5;
+
+        public static int TextWidth(string s, int scale) { return s.Length == 0 ? 0 : (s.Length * 5 - 1) * scale; }
+
+        static bool Pixel(char c, int x, int y)
+        {
+            byte[] g;
+            if (!glyphs.TryGetValue(char.ToUpperInvariant(c), out g)) return false;
+            if (x < 0 || x > 3 || y < 0 || y > 4) return false;
+            return (g[y] & (8 >> x)) != 0;
+        }
+
+        /// <summary>Same look as the big font: a vertical gradient with a dark outline behind it.</summary>
+        public static void Draw(int[] pix, int pw, int ph, string s, int x0, int y0, int scale, int colTop, int colBot, int shadow, float alpha)
+        {
+            int th = Height * scale;
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < s.Length; i++)
+                    for (int gy = 0; gy < Height; gy++)
+                        for (int gx = 0; gx < 4; gx++)
+                        {
+                            if (!Pixel(s[i], gx, gy)) continue;
+                            for (int sy = 0; sy < scale; sy++)
+                                for (int sx = 0; sx < scale; sx++)
+                                {
+                                    int px = x0 + (i * 5 + gx) * scale + sx, py = y0 + gy * scale + sy;
+                                    if (pass == 0)
+                                    {
+                                        if (shadow < 0) continue;
+                                        PixFont.PutPix(pix, pw, ph, px + 1, py + 1, shadow, alpha * 0.8f);
+                                        PixFont.PutPix(pix, pw, ph, px - 1, py, shadow, alpha * 0.8f);
+                                        PixFont.PutPix(pix, pw, ph, px, py - 1, shadow, alpha * 0.8f);
+                                    }
+                                    else
+                                    {
+                                        float t = th > 1 ? (float)(py - y0) / (th - 1) : 0;
+                                        PixFont.PutPix(pix, pw, ph, px, py, Col.Lerp(colTop, colBot, t), alpha);
+                                    }
+                                }
+                        }
         }
     }
 
