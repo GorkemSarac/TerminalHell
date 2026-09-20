@@ -5,6 +5,7 @@
 //           X exit switch   $ secret push wall (use it to slide it away)
 //   doors   D door   R/B/Y red/blue/yellow locked doors
 //   floors  . floor A   _ floor B   , outdoor (open sky)   ~ lava   : outdoor lava   = toxic slime   ; outdoor slime
+//           # metal walkway (safe to cross over lava or slime)
 //   player  ^ > v <  start position and facing
 //   enemies z ghoul (rifle)   i fiend (fireballs)   p brute (melee)   K the Warden (boss)
 //   items   h stimpack  m medikit  + health bonus  o soul orb  a armor bonus  G green armor  U blue armor
@@ -27,7 +28,7 @@ namespace TerminalHell
                 Id = "E1M1", Name = "OUTPOST GATE", Music = 1,
                 Intro = "THE RELAY OUTPOST WENT DARK THREE HOURS AGO.",
                 FloorA = Tex.F_TILE, CeilA = Tex.C_PANEL, FloorB = Tex.F_METAL, CeilB = Tex.C_STONE, FloorOut = Tex.F_DIRT,
-                Ambient = Col.Rgb(58, 56, 62), SkyLight = Col.Rgb(235, 180, 150), FogColor = Col.Rgb(10, 4, 3), FogDensity = 0.058f, Par = "2:30",
+                Ambient = Col.Rgb(82, 79, 86), SkyLight = Col.Rgb(240, 190, 160), FogColor = Col.Rgb(10, 4, 3), FogDensity = 0.05f, Par = "2:30",
                 Map = new[]
                 {
                 "3333333333333333333330000000000000000000",
@@ -71,7 +72,7 @@ namespace TerminalHell
                 Id = "E1M2", Name = "TOXIC REFINERY", Music = 2, NightSky = true,
                 Intro = "THE REFINERY PUMPS SOMETHING THAT IS NOT OIL.",
                 FloorA = Tex.F_METAL, CeilA = Tex.C_PANEL, FloorB = Tex.F_GRATE, CeilB = Tex.C_STONE, FloorOut = Tex.F_GRATE,
-                Ambient = Col.Rgb(46, 54, 46), SkyLight = Col.Rgb(120, 110, 150), FogColor = Col.Rgb(4, 12, 4), FogDensity = 0.085f, Par = "3:30",
+                Ambient = Col.Rgb(68, 78, 68), SkyLight = Col.Rgb(135, 125, 165), FogColor = Col.Rgb(4, 12, 4), FogDensity = 0.072f, Par = "3:30",
                 Map = new[]
                 {
                 "8888888888888888888888888888888888888888",
@@ -117,7 +118,7 @@ namespace TerminalHell
                 Id = "E1M3", Name = "GATES OF HELL", Music = 3,
                 Intro = "THE GATE IS OPEN. THE WARDEN IS WAITING.",
                 FloorA = Tex.F_HELL, CeilA = Tex.C_FLESH, FloorB = Tex.F_MARBLE, CeilB = Tex.C_STONE, FloorOut = Tex.F_HELL,
-                Ambient = Col.Rgb(70, 44, 40), SkyLight = Col.Rgb(235, 140, 105), FogColor = Col.Rgb(26, 4, 2), FogDensity = 0.06f, Par = "5:00",
+                Ambient = Col.Rgb(98, 64, 58), SkyLight = Col.Rgb(240, 150, 115), FogColor = Col.Rgb(26, 4, 2), FogDensity = 0.052f, Par = "5:00",
                 Map = new[]
                 {
                 "666666666666666666555X5556666666666666666666666",
@@ -144,9 +145,9 @@ namespace TerminalHell
                 "60,,,Q:,::::::9999955R55999999....6...p....6666",
                 "60:::::,::,,E:9C_!________!_h9..z.6!......!6666",
                 "60:::::,::,p,:9~~____p_____~~9....6........6666",
-                "60:::::,:,,,,:9~~_i______i_~~9....6666666.66666",
+                "60:::::,#,,,,:9~~_i______i_~~9....6666666.66666",
                 "60:::::,::::::9~~____++____~~9...!6........6666",
-                "60:::::,,,,,,,D~~___z__z___~~D.+..6.....e..6666",
+                "60:::::,,,,,,,D##___z__z___##D.+..6.....e..6666",
                 "60:::::,::::::9~~__k____k__~~9.+..6...p....6666",
                 "60:::::,::::::9~~____e_____~~9....6........6.o6",
                 "60:::::k::::::9__!________!__9....6........$..6",

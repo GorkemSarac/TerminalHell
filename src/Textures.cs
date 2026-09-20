@@ -11,7 +11,15 @@ namespace TerminalHell
         // wall texture ids (index into Walls)
         public const int STONE = 1, BRICK = 2, TECH = 3, WOOD = 4, MARBLE = 5, FLESH = 6, COMPUTER = 7, RUST = 8, SKULLS = 9, ROCK = 10;
         public const int EXIT_OFF = 11, EXIT_ON = 12, DOOR = 13, DOOR_RED = 14, DOOR_BLUE = 15, DOOR_YELLOW = 16, JAMB = 17;
-        public const int WALL_COUNT = 18;
+        // one variant of every plain wall (STONE..ROCK): secret walls that can be pushed, and the lit panels beside doors
+        public const int SECRET_BASE = 18, DOORLIT_BASE = 28;
+        public const int WALL_COUNT = 38;
+
+        /// <summary>The "this one slides away" version of a wall texture (secret push walls).</summary>
+        public static int SecretOf(int tex) { return tex >= STONE && tex <= ROCK ? SECRET_BASE + tex - STONE : tex; }
+
+        /// <summary>The version with a light strip, used on the walls either side of a door.</summary>
+        public static int DoorLitOf(int tex) { return tex >= STONE && tex <= ROCK ? DOORLIT_BASE + tex - STONE : tex; }
 
         // flat texture ids (index into Flats)
         public const int F_TILE = 0, F_METAL = 1, F_DIRT = 2, F_WOOD = 3, F_HELL = 4, F_LAVA = 5, F_NUKAGE = 6;
@@ -45,6 +53,11 @@ namespace TerminalHell
             Walls[DOOR_YELLOW] = DoorTex(Col.Rgb(255, 210, 40));
             Walls[JAMB] = JambTex();
             Walls[0] = Walls[STONE];
+            for (int t = STONE; t <= ROCK; t++)
+            {
+                Walls[SecretOf(t)] = SecretWall(Walls[t]);
+                Walls[DoorLitOf(t)] = DoorLitWall(Walls[t]);
+            }
 
             Flats[F_TILE] = TileFloor();
             Flats[F_METAL] = MetalFloor();
@@ -440,6 +453,69 @@ namespace TerminalHell
                 for (int y = 56; y < 64; y++)
                     for (int x = 0; x < S; x++)
                         im.Px[y * S + x] = (((x + y) / 4) % 2 == 0 ? Col.Rgb(210, 170, 30) : Col.Rgb(30, 28, 24)) | Col.OPAQUE;
+            }
+            return im;
+        }
+
+        /// <summary>A secret wall: the same stone, but warmer, with the glowing seams of a panel that slides away
+        /// and a rune in the middle. Different enough to spot, quiet enough not to give every secret away at a glance.</summary>
+        static Image SecretWall(Image src)
+        {
+            var im = src.Clone();
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    int c = Px(im, x, y);
+                    Set(im, x, y, Col.Rgb((int)(Col.R(c) * 1.15f) + 8, (int)(Col.G(c) * 0.86f), (int)(Col.B(c) * 0.8f)));
+                }
+            int seam = Col.Rgb(150, 62, 26), deep = Col.Rgb(28, 10, 6);
+            for (int y = 0; y < S; y++)
+            {
+                // the gap down each side of the panel, with a dull ember line inside it
+                Set(im, 1, y, deep); Set(im, 2, y, seam | Col.EMISSIVE); Set(im, 3, y, deep);
+                Set(im, S - 4, y, deep); Set(im, S - 3, y, seam | Col.EMISSIVE); Set(im, S - 2, y, deep);
+            }
+            for (int x = 1; x < S - 1; x++)
+            {
+                Set(im, x, 1, deep); Set(im, x, 2, Col.Scale(seam, 0.7f) | Col.EMISSIVE);
+                Set(im, x, S - 3, Col.Scale(seam, 0.7f) | Col.EMISSIVE); Set(im, x, S - 2, deep);
+            }
+            // a small rune: three claw marks
+            for (int i = 0; i < 3; i++)
+                for (int y = 26; y < 38; y++)
+                {
+                    int x = 27 + i * 5 + (y - 26) / 5;
+                    Set(im, x, y, Col.Scale(seam, 0.85f) | Col.EMISSIVE);
+                    Set(im, x + 1, y, Col.Scale(seam, 0.5f) | Col.EMISSIVE);
+                }
+            return im;
+        }
+
+        /// <summary>A wall panel with a light strip across the top, put either side of every door so doorways
+        /// are easy to find in a dark room.</summary>
+        static Image DoorLitWall(Image src)
+        {
+            var im = src.Clone();
+            int housing = Col.Rgb(46, 46, 52), lamp = Col.Rgb(255, 238, 190), lampDim = Col.Rgb(150, 130, 90);
+            for (int x = 6; x < S - 6; x++)
+            {
+                bool cap = x < 9 || x >= S - 9;
+                for (int y = 4; y < 14; y++)
+                {
+                    int c;
+                    if (y < 6 || y > 11 || cap) c = housing;                       // the fitting around the tube
+                    else if (y == 6 || y == 11) c = lampDim | Col.EMISSIVE;
+                    else c = lamp | Col.EMISSIVE;
+                    Set(im, x, y, c);
+                }
+                // light spilling down the wall below the strip
+                if (!cap)
+                    for (int y = 14; y < 30; y++)
+                    {
+                        float f = 1 - (y - 14) / 16f;
+                        int c = Px(im, x, y);
+                        Set(im, x, y, Col.Lerp(c, lamp, f * 0.45f));
+                    }
             }
             return im;
         }

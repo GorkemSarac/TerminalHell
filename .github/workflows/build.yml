@@ -20,6 +20,12 @@ jobs:
           .\bin\TerminalHell.exe --dev-check
           if ($LASTEXITCODE -ne 0) { throw "level check failed" }
 
+      - name: Menu test (clicking a setting changes it the right way)
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-menu
+          if ($LASTEXITCODE -ne 0) { throw "menu test failed" }
+
       - name: Soak test (random bot plays every level)
         shell: powershell
         run: |
@@ -48,6 +54,9 @@ jobs:
 
       - name: Check that every level can be completed
         run: ./out/terminalhell --dev-check
+
+      - name: Menu test (clicking a setting changes it the right way)
+        run: ./out/terminalhell --dev-menu
 
       - name: Soak test (random bot plays every level)
         run: ./out/terminalhell --dev-soak

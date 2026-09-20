@@ -32,9 +32,9 @@ namespace TerminalHell
         float fps, fpsAcc;
         int fpsFrames;
         DisplayMode lastMode;
-        int statKills, statItems, statSecrets;
+        int statKills, statItems, statSecrets, statScore;
         float statTime;
-        int totalKills, totalKillsMax, totalSecrets, totalSecretsMax;
+        int totalKills, totalKillsMax, totalSecrets, totalSecretsMax, totalScore;
         float totalTime;
         public int StartLevel = -1;
         public float AutoTestSeconds;      // > 0: play a scripted run, log performance and quit
@@ -174,6 +174,27 @@ namespace TerminalHell
             DebugTools.SaveTerminalShot(scr, outPath);
         }
 
+        /// <summary>Developer aid: renders the title, end-of-level or end-of-game screen with sample numbers.</summary>
+        public void DebugEndScreen(int cols, int rows, string which, float t, string outPath)
+        {
+            scr.Resize(cols, rows);
+            levelIndex = 0;
+            statKills = 87; statItems = 64; statSecrets = 50; statScore = 12450; statTime = 214;
+            totalKills = 120; totalKillsMax = 142; totalSecrets = 5; totalSecretsMax = 8; totalScore = 48350; totalTime = 731;
+            if (which == "title")
+            {
+                S.BestScore = totalScore; S.BestTime = totalTime;
+                state = GState.Title;
+                menus.Clear();
+                menus.Add(MainMenu());
+            }
+            else state = which == "victory" ? GState.Victory : GState.Intermission;
+            stateTime = t;
+            time = t;
+            Draw(1 / 30f);
+            DebugTools.SaveTerminalShot(scr, outPath);
+        }
+
         // ================================================================ state changes
 
         void OpenTitle()
@@ -190,7 +211,7 @@ namespace TerminalHell
         void NewGame(int level)
         {
             carry = new Player();
-            totalKills = totalKillsMax = totalSecrets = totalSecretsMax = 0;
+            totalKills = totalKillsMax = totalSecrets = totalSecretsMax = totalScore = 0;
             totalTime = 0;
             StartLevelAt(level);
         }
@@ -235,8 +256,10 @@ namespace TerminalHell
             statItems = world.TotalItems > 0 ? world.ItemsTaken * 100 / world.TotalItems : 100;
             statSecrets = world.TotalSecrets > 0 ? world.Secrets * 100 / world.TotalSecrets : 100;
             statTime = world.LevelTime;
+            statScore = world.Score;
             totalKills += world.Kills; totalKillsMax += world.TotalKills;
             totalSecrets += world.Secrets; totalSecretsMax += world.TotalSecrets;
+            totalScore += world.Score;
             totalTime += world.LevelTime;
             carry = world.P.CloneInventory();
             Music.Play(4);
@@ -393,13 +416,26 @@ namespace TerminalHell
                 case GState.Intermission:
                     if (stateTime > 0.8f && (Input.Hit(Input.VK_RETURN) || Input.Hit(Input.VK_SPACE) || Input.MouseCellClick || Input.LHit || Input.Hit(Input.VK_ESCAPE)))
                     {
-                        if (stateTime < 2.4f) stateTime = 2.4f;   // skip the count-up
+                        if (stateTime < 2.9f) stateTime = 2.9f;   // skip the count-up
                         else if (levelIndex + 1 < levels.Length) StartLevelAt(levelIndex + 1);
-                        else { state = GState.Victory; stateTime = 0; Music.Play(0); }
+                        else
+                        {
+                            state = GState.Victory;
+                            stateTime = 0;
+                            Music.Play(0);
+                            // the episode is finished: keep the run if it beats the best one so far
+                            if (totalScore > S.BestScore)
+                            {
+                                S.BestScore = totalScore;
+                                S.BestTime = totalTime;
+                                S.Save();
+                            }
+                        }
                     }
                     break;
                 case GState.Victory:
-                    if (stateTime > 2 && (Input.Hit(Input.VK_RETURN) || Input.Hit(Input.VK_ESCAPE) || Input.MouseCellClick)) OpenTitle();
+                    // not before the total score is on screen
+                    if (stateTime > 4 && (Input.Hit(Input.VK_RETURN) || Input.Hit(Input.VK_ESCAPE) || Input.MouseCellClick)) OpenTitle();
                     break;
             }
         }
@@ -551,6 +587,12 @@ namespace TerminalHell
             titleBottom = ty + 1;
             string sub = "A FIRST PERSON SHOOTER FOR YOUR TERMINAL";
             if (ty < scr.Rows) scr.PrintCenter(ty, sub, Col.Rgb(200, 150, 110), Screen.Transparent);
+            // once the episode has been finished, the best run stays on the title screen
+            if (S.BestScore > 0 && ty + 1 < scr.Rows)
+            {
+                scr.PrintCenter(ty + 1, "BEST SCORE " + Num(S.BestScore) + "   IN " + FormatTime(S.BestTime), Col.Rgb(255, 210, 120), Screen.Transparent);
+                titleBottom = ty + 2;
+            }
             string foot = " WASD MOVE  -  MOUSE LOOK  -  CLICK FIRE  -  E USE  -  ESC MENU ";
             if (scr.Cols > foot.Length + 2) scr.PrintCenter(scr.Rows - 1, foot, Col.Rgb(230, 200, 170), Col.Rgb(24, 8, 6));
 #if LINUX
@@ -617,7 +659,8 @@ namespace TerminalHell
             if (automap)
             {
                 scr.PrintCenter(0, " " + world.Def.Id + ": " + world.Def.Name + " ", Col.Rgb(255, 210, 120), Col.Rgb(30, 10, 8));
-                string st = " KILLS " + world.Kills + "/" + world.TotalKills + "   ITEMS " + world.ItemsTaken + "/" + world.TotalItems + "   SECRETS " + world.Secrets + "/" + world.TotalSecrets + " ";
+                string st = " KILLS " + world.Kills + "/" + world.TotalKills + "   ITEMS " + world.ItemsTaken + "/" + world.TotalItems + "   SECRETS " + world.Secrets + "/" + world.TotalSecrets +
+                    "   SCORE " + Num(world.Score) + " ";
                 scr.PrintCenter(viewRows - 1, st, Col.Rgb(220, 200, 180), Col.Rgb(30, 10, 8));
             }
             var boss = world.BossAwake;
@@ -685,20 +728,21 @@ namespace TerminalHell
             for (int i = 0; i < 3; i++)
             {
                 float k = Math.Min(1, Math.Max(0, (t - 0.3f - i * 0.5f) / 0.5f));
-                int v = (int)(vals[i] * k);
-                string line = labels[i].PadRight(12, '.') + (v + "%").PadLeft(5);
-                scr.PrintCenter(row + i * 2, line, Col.Rgb(240, 220, 200), Screen.Transparent);
+                scr.PrintCenter(row + i * 2, StatLine(labels[i], (int)(vals[i] * k) + "%"), Col.Rgb(240, 220, 200), Screen.Transparent);
             }
-            if (t > 1.8f)
+            // the score counts up last, after the three percentages
+            float sk = Math.Min(1, Math.Max(0, (t - 0.3f - 1.5f) / 0.6f));
+            scr.PrintCenter(row + 6, StatLine("SCORE", Num((int)(statScore * sk))), Col.Rgb(255, 220, 120), Screen.Transparent);
+            if (t > 2.3f)
             {
-                scr.PrintCenter(row + 6, "TIME".PadRight(12, '.') + FormatTime(statTime).PadLeft(5), Col.Rgb(240, 220, 200), Screen.Transparent);
-                scr.PrintCenter(row + 7, "PAR".PadRight(12, '.') + def.Par.PadLeft(5), Col.Rgb(170, 150, 130), Screen.Transparent);
+                scr.PrintCenter(row + 8, StatLine("TIME", FormatTime(statTime)), Col.Rgb(240, 220, 200), Screen.Transparent);
+                scr.PrintCenter(row + 9, StatLine("PAR", def.Par), Col.Rgb(170, 150, 130), Screen.Transparent);
             }
-            if (t > 2.4f)
+            if (t > 2.8f)
             {
                 string next = levelIndex + 1 < levels.Length ? "NEXT: " + levels[levelIndex + 1].Id + " - " + levels[levelIndex + 1].Name : "THE WAY OUT IS OPEN...";
-                scr.PrintCenter(row + 10, next, Col.Rgb(255, 170, 80), Screen.Transparent);
-                if (((int)(time * 2) & 1) == 0) scr.PrintCenter(Math.Min(scr.Rows - 2, row + 12), "PRESS ENTER TO CONTINUE", Col.Rgb(255, 240, 220), Screen.Transparent);
+                scr.PrintCenter(row + 12, next, Col.Rgb(255, 170, 80), Screen.Transparent);
+                if (((int)(time * 2) & 1) == 0) scr.PrintCenter(Math.Min(scr.Rows - 2, row + 14), "PRESS ENTER TO CONTINUE", Col.Rgb(255, 240, 220), Screen.Transparent);
             }
         }
 
@@ -706,6 +750,18 @@ namespace TerminalHell
         {
             int t = (int)s;
             return (t / 60) + ":" + (t % 60).ToString("00");
+        }
+
+        /// <summary>A score with thousands separators: 24500 -> "24,500".</summary>
+        static string Num(int n)
+        {
+            return n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>One intermission line: "KILLS........   100%" (all of them the same width, so the dots line up).</summary>
+        static string StatLine(string label, string value)
+        {
+            return label.PadRight(13, '.') + value.PadLeft(7);
         }
 
         void DrawVictory()
@@ -722,21 +778,25 @@ namespace TerminalHell
             Hud.BigText(scr, "VICTORY", 3, sc, Col.Rgb(255, 240, 170), Col.Rgb(210, 60, 20));
             string[] story =
             {
-                "THE WARDEN IS DEAD. ITS GATE COLLAPSES INTO ASH BEHIND YOU.",
+                "THE WARDEN IS DEAD, THE HELL GATE COLLAPSES INTO ASH BEHIND YOU.",
                 "",
                 "YOU CRAWL BACK THROUGH THE REFINERY, PAST THE OUTPOST,",
                 "INTO A GREY DAWN THAT SMELLS OF SMOKE AND SULPHUR.",
                 "",
-                "BUT DEEP BELOW, SOMETHING ELSE HAS BEGUN TO LISTEN...",
+                "BUT AN EVIL STILL LINGERS IN THE DEEP BENEATH, NOW FREE...",
                 "",
                 "KILLS " + totalKills + "/" + totalKillsMax + "    SECRETS " + totalSecrets + "/" + totalSecretsMax + "    TIME " + FormatTime(totalTime),
+                "TOTAL SCORE  " + Num(totalScore),
                 "",
                 "THANK YOU FOR PLAYING TERMINAL HELL",
             };
             int row = (3 + 7 * sc) / 2 + 2;
             int shown = (int)(stateTime * 3);
             for (int i = 0; i < story.Length && i < shown; i++)
-                scr.PrintCenter(row + i, story[i], i == story.Length - 1 ? Col.Rgb(255, 200, 90) : Col.Rgb(230, 210, 190), Screen.Transparent);
+            {
+                bool gold = i == story.Length - 1 || story[i].StartsWith("TOTAL SCORE");
+                scr.PrintCenter(row + i, story[i], gold ? Col.Rgb(255, 200, 90) : Col.Rgb(230, 210, 190), Screen.Transparent);
+            }
             if (stateTime > 4 && ((int)(time * 2) & 1) == 0)
                 scr.PrintCenter(Math.Min(scr.Rows - 1, row + story.Length + 2), "PRESS ENTER", Col.Rgb(255, 240, 220), Screen.Transparent);
         }

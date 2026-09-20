@@ -21,6 +21,8 @@ namespace TerminalHell
         public Random Rng = new Random();
         public float Time, LevelTime;
         public int Kills, TotalKills, ItemsTaken, TotalItems, Secrets, TotalSecrets;
+        public int Score;           // points for this level: monsters killed, things picked up, secrets found
+        public const int SecretScore = 1000;
         public float DamageMul = 1, AmmoMul = 1, Aggression = 1, ProjSpeedMul = 1;
         public List<DynLight> Lights = new List<DynLight>();
         readonly List<DynLight> lightPool = new List<DynLight>();
@@ -114,6 +116,16 @@ namespace TerminalHell
         {
             var it = new Item(c, x, y);
             it.Dropped = dropped;
+            // weapons left in the level stand on a lit pedestal, so they read as something worth walking to
+            if (!dropped && (c == 'S' || c == 'N' || c == 'L'))
+            {
+                const float PedestalScale = 1f / 52;
+                var ped = new Decor(Art.Pedestal, x, y, false, 0.3f);
+                ped.Scale = PedestalScale;
+                Add(ped);
+                it.Z = Art.Pedestal.H * PedestalScale;
+                Map.AddLight(x, y, 3.2f, 0.5f, Col.Rgb(255, 200, 120));
+            }
             Add(it);
         }
 
@@ -328,6 +340,7 @@ namespace TerminalHell
             {
                 p.Counted = true;
                 Secrets++;
+                Score += SecretScore;
                 Message("A SECRET IS REVEALED!", Col.Rgb(120, 255, 120));
                 Audio.Play(Sfx.Secret, 0.7f, 0, 1, 0);
             }
@@ -680,8 +693,24 @@ namespace TerminalHell
                 if (p.Give(this, it.Code, it.Dropped))
                 {
                     a.Remove = true;
-                    if (!it.Dropped) ItemsTaken++;
+                    if (!it.Dropped) { ItemsTaken++; Score += ItemScore(it.Code); }
                 }
+            }
+        }
+
+        /// <summary>Points for picking something up. Weapons and keys are worth the most, small bonuses the least.</summary>
+        public static int ItemScore(char code)
+        {
+            switch (code)
+            {
+                case 'S': case 'N': case 'L': return 500;                  // shotgun, minigun, rocket launcher
+                case 'r': case 'b': case 'y': return 200;                  // keycards
+                case 'o': case 'U': return 300;                            // soul orb, mega armor
+                case 'G': return 150;                                      // combat armor
+                case 'm': return 50;                                       // medikit
+                case 'h': return 25;                                       // stimpack
+                case '+': case 'a': return 10;                             // health / armor bonus
+                default: return 25;                                        // ammo
             }
         }
 

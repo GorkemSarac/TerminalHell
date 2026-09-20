@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace TerminalHell
 {
     enum CellKind : byte { Empty = 0, Wall = 1, Door = 2, Push = 3 }
-    enum FloorKind : byte { A = 0, B = 1, Outdoor = 2, Lava = 3, LavaOut = 4, Nukage = 5, NukageOut = 6 }
+    enum FloorKind : byte { A = 0, B = 1, Outdoor = 2, Lava = 3, LavaOut = 4, Nukage = 5, NukageOut = 6, Bridge = 7, BridgeOut = 8 }
     enum DoorState { Closed, Opening, Open, Closing }
 
     sealed class Door
@@ -109,6 +109,7 @@ namespace TerminalHell
                 case ':': return (int)FloorKind.LavaOut;
                 case '=': return (int)FloorKind.Nukage;
                 case ';': return (int)FloorKind.NukageOut;
+                case '#': return (int)FloorKind.Bridge;   // metal walkway over lava or slime
             }
             return -1;
         }
@@ -216,6 +217,19 @@ namespace TerminalHell
                 int i = d.Y * m.W + d.X;
                 int a = d.Horizontal ? (d.Y - 1) * m.W + d.X : d.Y * m.W + d.X - 1;
                 m.Floor[i] = m.Floor[a] == FloorKind.Outdoor ? FloorKind.Outdoor : FloorKind.A;
+
+                // a lit panel on the wall either side of the door, so doorways are easy to find
+                m.LightPanel(d.Horizontal ? d.X - 1 : d.X, d.Horizontal ? d.Y : d.Y - 1);
+                m.LightPanel(d.Horizontal ? d.X + 1 : d.X, d.Horizontal ? d.Y : d.Y + 1);
+                // and light spilling into the rooms on both sides, in the colour of the key a locked door wants
+                int lit = d.Key == 1 ? Col.Rgb(255, 90, 60) : d.Key == 2 ? Col.Rgb(100, 150, 255) : d.Key == 3 ? Col.Rgb(255, 210, 90) : Col.Rgb(255, 226, 180);
+                int ax = d.Horizontal ? 0 : 1, ay = d.Horizontal ? 1 : 0;   // the way you walk through it
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    int nx = d.X + ax * s, ny = d.Y + ay * s;
+                    if (m.In(nx, ny) && m.Kind[ny * m.W + nx] == CellKind.Empty)
+                        m.AddLight(d.X + 0.5f + ax * s * 0.6f, d.Y + 0.5f + ay * s * 0.6f, 3.4f, d.Key == 0 ? 0.5f : 0.6f, lit);
+                }
             }
 
             // push walls take the texture of their neighbours
@@ -238,8 +252,8 @@ namespace TerminalHell
                     if (c > bestN) { bestN = c; best = t; }
                 }
                 var p = new PushWall();
-                p.X = x; p.Y = y; p.Texture = best;
-                m.WallTex[i] = (byte)best;
+                p.X = x; p.Y = y; p.Texture = Tex.SecretOf(best);   // marked: warmer, with the seams of a sliding panel
+                m.WallTex[i] = (byte)p.Texture;
                 m.PushWalls.Add(p);
                 m.DoorIdx[i] = (short)(m.PushWalls.Count - 1);
                 m.SecretCount++;
@@ -251,12 +265,33 @@ namespace TerminalHell
                 }
             }
 
+            // a walkway over open-air lava keeps the sky above it
+            for (int i = 0; i < n; i++)
+            {
+                if (m.Floor[i] != FloorKind.Bridge) continue;
+                int x = i % m.W, y = i / m.W;
+                for (int k = 0; k < 8; k += 2)
+                {
+                    int nx = x + DX8[k], ny = y + DY8[k];
+                    if (m.In(nx, ny) && IsOutdoorFloor(m.Floor[ny * m.W + nx])) { m.Floor[i] = FloorKind.BridgeOut; break; }
+                }
+            }
+
             m.Flow = new short[n];
             return m;
         }
 
         public static readonly int[] DX8 = { 1, 1, 0, -1, -1, -1, 0, 1 };
         public static readonly int[] DY8 = { 0, 1, 1, 1, 0, -1, -1, -1 };
+
+        /// <summary>Turns a plain wall into the version with a light strip (used beside doors).</summary>
+        void LightPanel(int x, int y)
+        {
+            if (!In(x, y)) return;
+            int i = y * W + x;
+            if (Kind[i] != CellKind.Wall) return;
+            WallTex[i] = (byte)Tex.DoorLitOf(WallTex[i]);
+        }
 
         public bool IsWallTile(int x, int y)
         {
@@ -283,9 +318,13 @@ namespace TerminalHell
 
         public bool IsOutdoor(int x, int y)
         {
-            if (!In(x, y)) return false;
-            var f = Floor[y * W + x];
-            return f == FloorKind.Outdoor || f == FloorKind.LavaOut || f == FloorKind.NukageOut;
+            return In(x, y) && IsOutdoorFloor(Floor[y * W + x]);
+        }
+
+        /// <summary>Floors with open sky above them.</summary>
+        public static bool IsOutdoorFloor(FloorKind f)
+        {
+            return f == FloorKind.Outdoor || f == FloorKind.LavaOut || f == FloorKind.NukageOut || f == FloorKind.BridgeOut;
         }
 
         /// <summary>Solid for movement of players and monsters (doors block until almost open).</summary>

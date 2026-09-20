@@ -47,6 +47,7 @@ namespace TerminalHell
         public Sfx Sight, Pain, Death, AttackSnd;
         public char Drop;
         public float Scale = 1f / 64;
+        public int Score = 100;     // points for killing one
         public Image[] Frames;
         public float MeleeChance;   // chance a ranged monster claws when close
         public bool Boss;
@@ -68,26 +69,26 @@ namespace TerminalHell
             {
                 Name = "GHOUL", Code = 'z', Health = 30, Speed = 1.35f, Radius = 0.3f, PainChance = 0.7f, Attack = AttackType.Hitscan,
                 Range = 16, WindUp = 0.65f, CoolMin = 2.0f, CoolMax = 3.8f, DmgMin = 3, DmgMax = 10, Shots = 1,
-                Sight = Sfx.GhoulSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.GhoulShot, Drop = 'c', Frames = Art.Ghoul,
+                Sight = Sfx.GhoulSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.GhoulShot, Drop = 'c', Frames = Art.Ghoul, Score = 100,
             };
             Fiend = new MonsterDef
             {
                 Name = "FIEND", Code = 'i', Health = 60, Speed = 1.6f, Radius = 0.32f, PainChance = 0.6f, Attack = AttackType.Projectile,
                 Range = 18, WindUp = 0.75f, CoolMin = 2.2f, CoolMax = 4.2f, DmgMin = 8, DmgMax = 20, ProjSpeed = 6.0f,
-                Sight = Sfx.FiendSight, Pain = Sfx.FiendPain, Death = Sfx.FiendDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.Fiend, MeleeChance = 0.8f,
+                Sight = Sfx.FiendSight, Pain = Sfx.FiendPain, Death = Sfx.FiendDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.Fiend, MeleeChance = 0.8f, Score = 250,
             };
             Brute = new MonsterDef
             {
                 Name = "BRUTE", Code = 'p', Health = 150, Speed = 2.5f, Radius = 0.42f, PainChance = 0.45f, Attack = AttackType.Melee,
                 Range = 1.4f, MeleeRange = 1.25f, WindUp = 0.5f, CoolMin = 0.9f, CoolMax = 1.6f, DmgMin = 10, DmgMax = 28,
-                Sight = Sfx.BruteSight, Pain = Sfx.BrutePain, Death = Sfx.BruteDeath, AttackSnd = Sfx.BruteBite, Frames = Art.Brute,
+                Sight = Sfx.BruteSight, Pain = Sfx.BrutePain, Death = Sfx.BruteDeath, AttackSnd = Sfx.BruteBite, Frames = Art.Brute, Score = 500,
             };
             Warden = new MonsterDef
             {
                 Name = "WARDEN", Code = 'K', Health = 1400, Speed = 1.3f, Radius = 0.62f, PainChance = 0.08f, Attack = AttackType.Rockets,
                 Range = 30, WindUp = 0.9f, CoolMin = 1.8f, CoolMax = 3.0f, DmgMin = 30, DmgMax = 60, Shots = 2, ProjSpeed = 9,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.Rocket, Frames = Art.Warden,
-                Scale = 1f / 58, Boss = true, Drop = 'y',
+                Scale = 1f / 58, Boss = true, Drop = 'y', Score = 5000,
             };
             Ghoul.MeasureHeight(); Fiend.MeasureHeight(); Brute.MeasureHeight(); Warden.MeasureHeight();
         }
@@ -189,6 +190,7 @@ namespace TerminalHell
             Shootable = false;
             Audio.PlayAt(Def.Death, X, Y, Def.Boss ? 2f : 1f, Tag);
             w.Kills++;
+            w.Score += Def.Score;
             if (Def.Drop != '\0') w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
             if (Def.Boss) w.BossKilled();
         }
@@ -428,6 +430,22 @@ namespace TerminalHell
             Kind = ActorKind.Item;
             Code = c; X = x; Y = y;
             Radius = 0.25f;
+            // pickups are drawn at a fixed height in the world, whatever the size of their artwork,
+            // so that everything worth walking over is big enough to notice
+            Image im;
+            if (Art.Items.TryGetValue(c, out im) && im != null && im.H > 0) Scale = WorldHeight(c) / im.H;
+        }
+
+        static float WorldHeight(char c)
+        {
+            switch (c)
+            {
+                case 'S': case 'N': case 'L': return 0.30f;                        // weapons (they sit on a pedestal)
+                case 'r': case 'b': case 'y': return 0.42f;                        // keycards
+                case 'o': case 'U': case 'G': return 0.58f;                        // soul orb and armour
+                case 'm': case 'C': case 'E': case 'Q': return 0.42f;              // the big boxes
+                default: return 0.34f;                                             // stimpacks, clips, shells, bonuses
+            }
         }
 
         public override Image Sprite(World w)
@@ -437,7 +455,8 @@ namespace TerminalHell
             return Art.Items.TryGetValue(Code, out im) ? im : Art.Items['h'];
         }
 
-        public override bool Bright { get { return Code == 'o' || Code == 'r' || Code == 'b' || Code == 'y' || Code == '+'; } }
+        /// <summary>Pickups are lit by themselves: in a dark room you can still see what is worth collecting.</summary>
+        public override bool Bright { get { return true; } }
 
         public override void Update(World w, float dt)
         {

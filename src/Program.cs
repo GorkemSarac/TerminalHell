@@ -8,7 +8,8 @@ namespace TerminalHell
 {
     static class Program
     {
-        public const string Version = "1.0.0";
+        // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
+        public const string Version = "1.1.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -308,6 +309,44 @@ namespace TerminalHell
                         Console.WriteLine("ghoul height " + MonsterDef.Ghoul.Height.ToString("0.00", inv) + ", eye height 0.5, distance 4");
                         return 0;
                     }
+                case "--dev-end":
+                    {
+                        // --dev-end out.png cols rows [intermission|victory|title] [seconds into the screen]
+                        var g = new Game(new Settings());
+                        g.DebugEndScreen(int.Parse(a[2]), int.Parse(a[3]), a.Count > 4 ? a[4] : "intermission", a.Count > 5 ? float.Parse(a[5], inv) : 9f, a[1]);
+                        return 0;
+                    }
+                case "--dev-menu":
+                    {
+                        // clicking a value in the options: the "<" side must turn it down, the ">" side up
+                        int value = 5;
+                        var s = new Settings();
+                        var scr = new Screen();
+                        scr.Resize(80, 24);
+                        var m = new Menu("TEST");
+                        m.AddValue("VOLUME", () => value.ToString(), d => value += d);
+                        m.Add("BACK", () => { });
+                        int failures = 0;
+                        m.Draw(scr, 2, true);   // the draw is what works out where the "<" and ">" are
+                        Input.MouseCellY = m.ItemRows[0];
+                        int mid = (m.ValueLeft[0] + m.ValueRight[0]) / 2;
+                        int[] xs = { m.ValueLeft[0], m.ValueRight[0], mid, mid + 1, m.ItemX };
+                        string[] names = { "the < arrow", "the > arrow", "the left half of the value", "the right half of the value", "the label" };
+                        int[] want = { -1, 1, -1, 1, 1 };
+                        for (int i = 0; i < xs.Length; i++)
+                        {
+                            int before = value;
+                            Input.MouseCellClick = true;
+                            Input.MouseCellX = xs[i];
+                            m.Update();
+                            Input.MouseCellClick = false;
+                            int got = value - before;
+                            Console.WriteLine("clicking " + names[i] + " at column " + xs[i] + ": " + (got > 0 ? "+" : "") + got + (got == want[i] ? "" : "   WRONG, expected " + want[i]));
+                            if (got != want[i]) failures++;
+                        }
+                        Console.WriteLine("default volumes: sound " + s.SfxVolume + ", music " + s.MusicVolume);
+                        return failures;
+                    }
                 case "--dev-check":
                     {
                         // proves every level can be finished: collects reachable keys until the exit is reachable
@@ -465,7 +504,7 @@ namespace TerminalHell
 
                             int alive = 0;
                             foreach (var act in w.Actors) { var m = act as Monster; if (m != null && m.Alive) alive++; }
-                            Console.WriteLine(def.Id + ": ok  kills " + w.Kills + "/" + w.TotalKills + "  alive " + alive + "  secrets " + w.Secrets + "/" + w.TotalSecrets +
+                            Console.WriteLine(def.Id + ": ok  kills " + w.Kills + "/" + w.TotalKills + "  score " + w.Score + "  alive " + alive + "  secrets " + w.Secrets + "/" + w.TotalSecrets +
                                 "  items " + w.ItemsTaken + "/" + w.TotalItems + "  exits " + exits + "  actors " + w.Actors.Count + "  frames " + frames + "  monster-frames on lava/slime " + onLava);
                         }
                         return 0;

@@ -266,6 +266,8 @@ namespace TerminalHell
                     case FloorKind.A: t = Tex.Flats[map.Def.FloorA].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.B: t = Tex.Flats[map.Def.FloorB].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.Outdoor: t = Tex.Flats[map.Def.FloorOut].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
+                    case FloorKind.Bridge:
+                    case FloorKind.BridgeOut: t = Tex.Flats[Tex.F_GRATE].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.Lava:
                     case FloorKind.LavaOut:
                         {
@@ -297,13 +299,13 @@ namespace TerminalHell
                 float wx = px + rdx * d, wy = py + rdy * d;
                 int cx = (int)wx, cy = (int)wy;
                 FloorKind fk = map.In(cx, cy) ? map.Floor[cy * W_ + cx] : FloorKind.Outdoor;
-                if (fk == FloorKind.Outdoor || fk == FloorKind.LavaOut || fk == FloorKind.NukageOut)
+                if (Map.IsOutdoorFloor(fk))
                 {
                     if (skyU < 0) skyU = SkyU(rdx, rdy);
                     pix[y * W + x] = SkyPix(skyU, y);
                     continue;
                 }
-                int flat = fk == FloorKind.B ? map.Def.CeilB : map.Def.CeilA;
+                int flat = fk == FloorKind.B || fk == FloorKind.Bridge ? map.Def.CeilB : map.Def.CeilA;
                 int tu = (int)(wx * Tex.S), tv = (int)(wy * Tex.S);
                 int t = Tex.Flats[flat].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)];
                 float lr, lg, lb;

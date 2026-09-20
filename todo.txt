@@ -1,18 +1,51 @@
 irm https://raw.githubusercontent.com/GorkemSarac/TerminalHell/main/install.ps1 | iex
-///////////////to add:
+////////////////////////////////////To add:
 
-Score for each level
+Score mechanic thats shown at the end of each level ✔
 
-Display total score at the end and total time
+Display total score and total time at the end of the game ✔
 
-Add a jumping mechanic
+Make the item pickups (health, ammo, keycards) bigger and more visually visible. ✔
+
+Make the doors always have a different type of light strip above it or on the walls next to it so it's always apparent where the walls are. ✔
+
+Make the overall game a bit brighter. ✔
+
+Make the interactable walls that hold a secret coloured a bit different than the normal walls. ✔
+
+Put the weapon pickups on pedestals so that they are easier to notice. ✔
+
+Add a bridge on the floor in the third level between the laval and the floor so you dont have to walk on lava to get to the other two rooms. ✔
+
+Change the ending screen text to "The warden is dead, the hell gate collapses in to ash behind you." keep the middle part the same and the last part to be "But an evil still lingers in the deep beneath, now free..." ✔
+
+Show best score in the main menu after beating the game. ✔
+
+Add a jumping mechanic using spacebar so you can jump over obstacles
+
+Parry mechanic to parry projectile attacks
+
+Save and load game, 1 save slot
+
+Hell-ish looking ray gun weapon, 6 weapons total including fist
+
+////////////////////////////////////Level design:////////////////////////////////////
 
 Earth levels 1 2 3
 
-Hell-ish looking ray gun weapon
+You start out with a fist and nothing else
 
-//////////////////Bugs:
+First level is a airport terminal (thus the name) where you enter a airport terminal. pickup your pass from the ground, then you hear an explosion/demonic sounds and the next room you enter has a single evil soldier enemy which drops the red keycard. you go into the red keycard room, pickup the pistol from the pedestal, and keep going in the level and fight more evil solider enemies, I'll leave the rest of the level design to you.
+
+Second level
+
+Third level
+
+////////////////////////////////////Bugs:////////////////////////////////////
 
 Need to fix Weapon models ✔
 
 Screen flashing doesnt need to happen when shooting, it reduces fps ✔
+
+There is a bug in the options
+

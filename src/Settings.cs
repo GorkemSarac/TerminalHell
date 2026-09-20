@@ -19,11 +19,13 @@ namespace TerminalHell
         public bool Crosshair = true;
         public bool HeadBob = true;
         public int Fov = 74;
-        public int SfxVolume = 8;           // 0..10
-        public int MusicVolume = 5;         // 0..10
+        public int SfxVolume = 2;           // 0..10
+        public int MusicVolume = 2;         // 0..10
         public bool ShowFps;
         public int Difficulty = 1;          // 0 easy, 1 normal, 2 hard
         public bool PixelDouble;            // render at half resolution (faster terminals)
+        public int BestScore;               // best finished run: shown on the title screen
+        public float BestTime;
 
         public static string Dir
         {
@@ -54,11 +56,13 @@ namespace TerminalHell
                         case "crosshair": s.Crosshair = Bool(v, true); break;
                         case "headbob": s.HeadBob = Bool(v, true); break;
                         case "fov": s.Fov = Clamp(Int(v, 74), 60, 100); break;
-                        case "sfxvolume": s.SfxVolume = Clamp(Int(v, 8), 0, 10); break;
-                        case "musicvolume": s.MusicVolume = Clamp(Int(v, 5), 0, 10); break;
+                        case "sfxvolume": s.SfxVolume = Clamp(Int(v, 2), 0, 10); break;
+                        case "musicvolume": s.MusicVolume = Clamp(Int(v, 2), 0, 10); break;
                         case "showfps": s.ShowFps = Bool(v, false); break;
                         case "difficulty": s.Difficulty = Clamp(Int(v, 1), 0, 2); break;
                         case "pixeldouble": s.PixelDouble = Bool(v, false); break;
+                        case "bestscore": s.BestScore = Math.Max(0, Int(v, 0)); break;
+                        case "besttime": s.BestTime = Math.Max(0, Float(v, 0)); break;
                     }
                 }
             }
@@ -87,6 +91,8 @@ namespace TerminalHell
                 sb.AppendLine("showfps=" + ShowFps);
                 sb.AppendLine("difficulty=" + Difficulty);
                 sb.AppendLine("pixeldouble=" + PixelDouble);
+                sb.AppendLine("bestscore=" + BestScore);
+                sb.AppendLine("besttime=" + BestTime.ToString("0.0", CultureInfo.InvariantCulture));
                 File.WriteAllText(FilePath, sb.ToString());
             }
             catch { }

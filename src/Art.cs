@@ -11,7 +11,7 @@ namespace TerminalHell
 
         public static Image[] Ghoul, Fiend, Brute, Warden;
         public static Dictionary<char, Image> Items = new Dictionary<char, Image>();
-        public static Image Barrel, Pillar, Corpse, BloodPool, Skulls, CeilLamp, TechLamp, BarrelDead;
+        public static Image Barrel, Pillar, Corpse, BloodPool, Skulls, CeilLamp, TechLamp, BarrelDead, Pedestal;
         public static Image[] Torch = new Image[3];
         public static Image[] Fireball = new Image[2], Rocket = new Image[2], Explosion = new Image[6], Puff = new Image[3], Blood = new Image[3];
         public static Image[] Soulsphere = new Image[2];
@@ -604,6 +604,17 @@ namespace TerminalHell
             for (int i = 0; i < 4; i++) c.Rect(6 + i * 3, 8, 1, 50, Col.Rgb(90, 86, 78));
             c.Outline(Col.Rgb(20, 18, 16));
             Pillar = c.Done();
+            // pedestal: weapons stand on one of these, lit from inside, so they are easy to spot across a room
+            c = new Canvas(26, 22);
+            c.NoiseSeed = 58;
+            c.NoiseAmt = 0.08f;
+            c.Rect(1, 0, 24, 4, Col.Rgb(126, 120, 110), Col.Rgb(86, 82, 74));       // top slab
+            c.Rect(4, 4, 18, 14, Col.Rgb(104, 98, 90), Col.Rgb(64, 60, 54));        // column
+            c.Rect(0, 18, 26, 4, Col.Rgb(120, 114, 104), Col.Rgb(78, 74, 68));      // base
+            for (int i = 0; i < 3; i++) c.Rect(7 + i * 6, 6, 2, 10, Col.Rgb(255, 190, 90) | Col.EMISSIVE);
+            c.Rect(1, 3, 24, 1, Col.Rgb(255, 210, 130) | Col.EMISSIVE);
+            c.Outline(Col.Rgb(18, 16, 14));
+            Pedestal = c.Done();
             // tall tech lamp
             c = new Canvas(12, 50);
             c.Tube(4.5f, 12, 3, 36, Col.Rgb(90, 92, 100), true);

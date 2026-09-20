@@ -21,6 +21,7 @@ namespace TerminalHell
         public Action OnBack;
         public string[] Lines;            // free text (help screens)
         public int[] ItemRows = new int[0];
+        public int[] ValueLeft = new int[0], ValueRight = new int[0];   // columns of the "<" and ">" of each value
         public int ItemX, ItemW;
 
         public Menu(string title) { Title = title; }
@@ -72,11 +73,20 @@ namespace TerminalHell
             if (Input.Hit(Input.VK_RETURN) || Input.Hit(Input.VK_SPACE) || click)
             {
                 if (it != null && it.Activate != null) { Audio.Play(Sfx.MenuSelect, 0.7f, 0, 1, 0); it.Activate(); }
-                else if (it != null && it.Adjust != null) { it.Adjust(1); Audio.Play(Sfx.MenuMove, 0.6f, 0, 1, 0); }
+                else if (it != null && it.Adjust != null) { it.Adjust(ClickDirection(click)); Audio.Play(Sfx.MenuMove, 0.6f, 0, 1, 0); }
                 else if (Items.Count == 0) return false;
             }
             if (Input.Hit(Input.VK_ESCAPE) || Input.Hit(Input.VK_BACK)) return false;
             return true;
+        }
+
+        /// <summary>Which way a click changes a value: the "&lt;" half of "&lt; VALUE &gt;" turns it down, the "&gt;" half up.
+        /// Clicking the label (or pressing Enter) steps up, so on/off settings toggle with any click.</summary>
+        int ClickDirection(bool click)
+        {
+            if (!click || Sel >= ValueLeft.Length || ValueLeft[Sel] < 0) return 1;
+            if (Input.MouseCellX < ValueLeft[Sel] - 1) return 1;
+            return Input.MouseCellX <= (ValueLeft[Sel] + ValueRight[Sel]) / 2 ? -1 : 1;
         }
 
         public void Draw(Screen s, int top, bool boxed)
@@ -123,12 +133,15 @@ namespace TerminalHell
                 row++;
             }
             ItemRows = new int[Items.Count];
+            ValueLeft = new int[Items.Count];
+            ValueRight = new int[Items.Count];
             ItemX = x0 + 3; ItemW = w - 6;
             int pulse = Col.Lerp(Col.Rgb(255, 60, 30), Col.Rgb(255, 200, 80), 0.5f + 0.5f * (float)Math.Sin(Environment.TickCount / 150.0));
             for (int i = 0; i < Items.Count; i++)
             {
                 var it = Items[i];
                 ItemRows[i] = row;
+                ValueLeft[i] = ValueRight[i] = -1;
                 if (it.Spacer) { row++; continue; }
                 bool sel = i == Sel;
                 int fg = sel ? Col.Rgb(255, 240, 200) : Col.Rgb(170, 150, 130);
@@ -139,7 +152,9 @@ namespace TerminalHell
                 {
                     s.Print(x0 + 3, row, it.Text, fg, rowBg);
                     string v = "< " + it.Value() + " >";
-                    s.Print(x0 + w - 3 - v.Length, row, v, sel ? Col.Rgb(255, 210, 90) : Col.Rgb(200, 160, 90), rowBg);
+                    ValueLeft[i] = x0 + w - 3 - v.Length;
+                    ValueRight[i] = x0 + w - 4;
+                    s.Print(ValueLeft[i], row, v, sel ? Col.Rgb(255, 210, 90) : Col.Rgb(200, 160, 90), rowBg);
                 }
                 else
                 {
