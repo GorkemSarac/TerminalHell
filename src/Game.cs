@@ -28,6 +28,7 @@ namespace TerminalHell
         Player carry;
         int levelIndex;
         bool quit, automap, wasFocused = true, fireLock;
+        float automapZoom = 1f;
         float time, animTime, stateTime, introTime;
         string notice;                   // a short line under the menus: "SETTINGS RESET." and the like
         float noticeTime;
@@ -46,6 +47,7 @@ namespace TerminalHell
         public string AutoTestLog;
         public bool AutoTestIdle;
         public bool God;
+        public bool StartWithAutomap;   // --automap: for measuring the automap's render cost
         public float[] Warp;
         double atChars, atFrames, atTime, atWorst, atDraw, atPresent;
         double presentAvg = 10.5;
@@ -78,6 +80,7 @@ namespace TerminalHell
                 double last = sw.Elapsed.TotalSeconds;
                 if (StartLevel >= 0) { S.Difficulty = Math.Max(0, S.Difficulty); NewGame(StartLevel); }
                 else OpenTitle();
+                if (StartWithAutomap) automap = true;
                 while (!quit)
                 {
                     double now = sw.Elapsed.TotalSeconds;
@@ -100,7 +103,9 @@ namespace TerminalHell
                     if (!tolFixed)
                     {
                         presentAvg += ((t2 - t1) * 1000 - presentAvg) * 0.05;
-                        if (presentAvg > 13 && VtPresenter.Tolerance < 15) { VtPresenter.Tolerance++; presentAvg = 10.5; }
+                        // a bigger console (full screen, high DPI) has far more cells to redraw, so it needs a
+                        // wider tolerance ceiling to actually reach a steady frame time instead of pegging at 15
+                        if (presentAvg > 13 && VtPresenter.Tolerance < 22) { VtPresenter.Tolerance++; presentAvg = 10.5; }
                         else if (presentAvg < 7 && VtPresenter.Tolerance > 7) { VtPresenter.Tolerance--; presentAvg = 10.5; }
                     }
                     if (AutoTestSeconds > 0 && state == GState.Playing && stateTime > 0.5f) { atDraw += t1 - t0; atPresent += t2 - t1; }
@@ -147,6 +152,21 @@ namespace TerminalHell
             else vt.Present(scr, mode == DisplayMode.Ascii);
         }
 
+        /// <summary>Developer aid: runs the automap's camera-only path against a caller-supplied world, so
+        /// --dev-automap-aim can check that AimSlope stays right when the full 3D pass is skipped.</summary>
+        public void DebugAutomapAim(World w, int cols, int rows)
+        {
+            world = w;
+            automap = true;
+            scr.Resize(cols, rows);
+            int viewH = (scr.Rows - Hud.Rows(scr.Rows)) * 2;
+            cam.X = w.P.X; cam.Y = w.P.Y; cam.Angle = w.P.Angle; cam.Pitch = w.P.Pitch; cam.EyeZ = w.P.EyeZ;
+            cam.Fov = S.Fov;
+            ren.Aspect = Term.CellAspect;
+            ren.PrepareCameraOnly(scr.W, viewH, cam);
+            w.P.AimSlope = (ren.Horizon - viewH * 0.5f) / ren.ProjY;
+        }
+
         /// <summary>Developer aid: renders one in-game frame (with HUD) to a PNG without a console.</summary>
         public void DebugFrame(int cols, int rows, int level, float x, float y, float angleDeg, float simSeconds, string outPath, bool ascii, int weapon, float pitch)
         {
@@ -154,7 +174,13 @@ namespace TerminalHell
             NewGame(level);
             world.P.X = x; world.P.Y = y; world.P.Angle = (float)(angleDeg * Math.PI / 180);
             world.P.Pitch = pitch;
-            if (weapon >= 0) { for (int i = 0; i < Player.Weapons; i++) world.P.Has[i] = true; world.P.Weapon = weapon; }
+            if (weapon >= 0)
+            {
+                for (int i = 0; i < Player.Weapons; i++) world.P.Has[i] = true;
+                world.P.Weapon = weapon;
+                for (int k = 1; k < world.P.Keys.Length; k++) world.P.Keys[k] = true;
+                world.P.Ammo[0] = 50;
+            }
             var inp = new PlayerInput();
             for (float t = 0; t < simSeconds; t += 1 / 30f) { world.Update(1 / 30f, inp); introTime -= 1 / 30f; }
             Draw(1 / 30f);
@@ -186,13 +212,14 @@ namespace TerminalHell
             levelIndex = 0;
             statKills = 87; statItems = 64; statSecrets = 50; statScore = 12450; statTime = 214;
             totalKills = 120; totalKillsMax = 142; totalSecrets = 5; totalSecretsMax = 8; totalScore = 48350; totalTime = 731;
-            if (which == "title" || which == "options")
+            if (which == "title" || which == "options" || which == "episodes")
             {
-                S.BestScore = totalScore; S.BestTime = totalTime; S.Beaten = true;
+                for (int e = 0; e < Settings.Episodes; e++) { S.BestScores[e] = totalScore - e * 9000; S.BestTimes[e] = totalTime - e * 300; S.Beaten[e] = true; }
                 state = GState.Title;
                 menus.Clear();
                 menus.Add(MainMenu());
                 if (which == "options") menus.Add(OptionsMenu());
+                if (which == "episodes") menus.Add(EpisodeMenu());
             }
             else if (which == "burn")
             {
@@ -233,6 +260,7 @@ namespace TerminalHell
         void NewGame(int level)
         {
             carry = new Player();
+            if (levels[level].Unarmed) carry.MakeUnarmed();
             totalKills = totalKillsMax = totalSecrets = totalSecretsMax = totalScore = 0;
             totalTime = 0;
             StartLevelAt(level);
@@ -249,7 +277,7 @@ namespace TerminalHell
             introTime = 4f;
             automap = false;
             menus.Clear();
-            Music.Play(levels[i].Music);
+            Music.Play(world.MusicNow());
             world.Message(levels[i].Intro, Col.Rgb(255, 190, 110));
 #if LINUX
             foreach (var note in Input.TakeNotices())
@@ -268,6 +296,7 @@ namespace TerminalHell
             state = GState.Playing;
             introTime = 2.5f;
             menus.Clear();
+            Music.Play(world.MusicNow());
             Input.ClearKeys();
         }
 
@@ -301,7 +330,8 @@ namespace TerminalHell
             var m = new Menu("MAIN MENU");
             var saved = SaveGame.ReadHeader();
             if (saved != null) m.Add("CONTINUE GAME  " + saved.Describe(levels), () => LoadSaved());
-            m.Add("NEW GAME", () => menus.Add(DifficultyMenu()));
+            // the episode picker only shows up once the whole game has been beaten at least once; until then, straight into episode 1
+            m.Add("NEW GAME", () => { if (S.Beaten[Levels.Episodes.Length - 1]) menus.Add(EpisodeMenu()); else menus.Add(DifficultyMenu(Levels.FirstOf(0))); });
             m.Add("OPTIONS", () => menus.Add(OptionsMenu()));
             m.Add("CONTROLS", () => menus.Add(ControlsMenu()));
             m.Add("QUIT", () => quit = true);
@@ -309,14 +339,36 @@ namespace TerminalHell
             return m;
         }
 
-        Menu DifficultyMenu()
+        Menu EpisodeMenu()
         {
+            var m = new Menu("CHOOSE AN EPISODE");
+            for (int e = 0; e < Levels.Episodes.Length; e++)
+            {
+                int first = Levels.FirstOf(e);
+                var ep = Levels.Episodes[e];
+                m.Add("EPISODE " + (e + 1) + " - " + ep.Name + "  " + ep.Blurb, () => menus.Add(DifficultyMenu(first)));
+            }
+            m.Sel = lastEpisode;
+            return m;
+        }
+
+        int lastEpisode;
+
+        Menu DifficultyMenu(int firstLevel)
+        {
+            lastEpisode = levels[firstLevel].Episode;
             var m = new Menu("CHOOSE YOUR FATE");
-            m.Add("EASY   - ROOKIE", () => { S.Difficulty = 0; S.Save(); NewGame(0); });
-            m.Add("NORMAL - SOLDIER", () => { S.Difficulty = 1; S.Save(); NewGame(0); });
-            m.Add("HARD   - BERSERKER", () => { S.Difficulty = 2; S.Save(); NewGame(0); });
+            m.Add("EASY   - ROOKIE", () => { S.Difficulty = 0; S.Save(); NewGame(firstLevel); });
+            m.Add("NORMAL - SOLDIER", () => { S.Difficulty = 1; S.Save(); NewGame(firstLevel); });
+            m.Add("HARD   - BERSERKER", () => { S.Difficulty = 2; S.Save(); NewGame(firstLevel); });
             m.Sel = S.Difficulty;
             return m;
+        }
+
+        /// <summary>The level that follows the one being played, or -1 at the end of its episode.</summary>
+        int NextLevel()
+        {
+            return levelIndex + 1 < levels.Length && levels[levelIndex + 1].Episode == levels[levelIndex].Episode ? levelIndex + 1 : -1;
         }
 
         Menu PauseMenu()
@@ -476,7 +528,7 @@ namespace TerminalHell
             automap = false;
             fireLock = true;
             menus.Clear();
-            Music.Play(levels[levelIndex].Music);
+            Music.Play(world.MusicNow());
             Input.ClearKeys();
             world.Message("GAME LOADED - " + levels[levelIndex].Id + ": " + levels[levelIndex].Name, Col.Rgb(140, 255, 140));
         }
@@ -546,18 +598,31 @@ namespace TerminalHell
                     if (stateTime > 0.8f && (Input.Hit(Input.VK_RETURN) || Input.Hit(Input.VK_SPACE) || Input.MouseCellClick || Input.LHit || Input.Hit(Input.VK_ESCAPE)))
                     {
                         if (stateTime < 2.9f) stateTime = 2.9f;   // skip the count-up
-                        else if (levelIndex + 1 < levels.Length) StartLevelAt(levelIndex + 1);
+                        else if (NextLevel() >= 0) StartLevelAt(NextLevel());
                         else
                         {
-                            state = GState.Victory;
-                            stateTime = 0;
-                            Music.Play(0);
-                            // the episode is finished: the highest score and the fastest run are kept separately
-                            bool better = !S.Beaten;
-                            S.Beaten = true;
-                            if (totalScore > S.BestScore) { S.BestScore = totalScore; better = true; }
-                            if (S.BestTime <= 0 || totalTime < S.BestTime) { S.BestTime = totalTime; better = true; }
+                            // the episode is finished: the highest score and the fastest run are kept separately, per episode
+                            int ep = levels[levelIndex].Episode;
+                            bool better = !S.Beaten[ep];
+                            S.Beaten[ep] = true;
+                            if (totalScore > S.BestScores[ep]) { S.BestScores[ep] = totalScore; better = true; }
+                            if (S.BestTimes[ep] <= 0 || totalTime < S.BestTimes[ep]) { S.BestTimes[ep] = totalTime; better = true; }
                             if (better) S.Save();
+
+                            int nextEp = ep + 1;
+                            if (nextEp < Levels.Episodes.Length)
+                            {
+                                // straight into the next episode: fresh totals, same difficulty, whatever is still in the player's hands
+                                totalKills = totalKillsMax = totalSecrets = totalSecretsMax = totalScore = 0;
+                                totalTime = 0;
+                                StartLevelAt(Levels.FirstOf(nextEp));
+                            }
+                            else
+                            {
+                                state = GState.Victory;
+                                stateTime = 0;
+                                Music.Play(0);
+                            }
                         }
                     }
                     break;
@@ -603,7 +668,11 @@ namespace TerminalHell
             inp.Jump = Input.Hit(Input.VK_SPACE);
             inp.Parry = Input.RHit;
             for (int i = 0; i < Player.Weapons; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
-            if (Input.Wheel != 0) inp.Cycle = Input.Wheel > 0 ? -1 : 1;
+            if (Input.Wheel != 0)
+            {
+                if (automap) automapZoom = Math.Max(0.4f, Math.Min(3f, automapZoom + Input.Wheel * 0.15f));
+                else inp.Cycle = Input.Wheel > 0 ? -1 : 1;
+            }
             if (Input.Hit('Q') && world.P.Has[world.P.LastWeapon]) inp.SelectSlot = world.P.LastWeapon + 1;
 
             if (Warp != null && stateTime < 0.1f)
@@ -720,15 +789,17 @@ namespace TerminalHell
             titleBottom = ty + 1;
             string sub = "A FIRST PERSON SHOOTER FOR YOUR TERMINAL";
             if (ty < scr.Rows) scr.PrintCenter(ty, sub, Col.Rgb(200, 150, 110), Screen.Transparent);
-            // once the episode has been finished, the best run stays on the title screen
-            if ((S.BestScore > 0 || S.BestTime > 0) && ty + 1 < scr.Rows)
+            // once an episode has been finished, its best run stays on the title screen
+            for (int e = 0; e < Levels.Episodes.Length; e++)
             {
-                string best = S.BestScore > 0 ? "BEST SCORE " + Num(S.BestScore) : "";
-                if (S.BestTime > 0) best += (best.Length > 0 ? "     " : "") + "BEST TIME " + FormatTime(S.BestTime);
-                scr.PrintCenter(ty + 1, best, Col.Rgb(255, 210, 120), Screen.Transparent);
-                titleBottom = ty + 2;
+                if ((S.BestScores[e] <= 0 && S.BestTimes[e] <= 0) || titleBottom >= scr.Rows) continue;
+                string best = Levels.Episodes[e].Name + "   ";
+                if (S.BestScores[e] > 0) best += "BEST SCORE " + Num(S.BestScores[e]);
+                if (S.BestTimes[e] > 0) best += (S.BestScores[e] > 0 ? "     " : "") + "BEST TIME " + FormatTime(S.BestTimes[e]);
+                scr.PrintCenter(titleBottom, best, Col.Rgb(255, 210, 120), Screen.Transparent);
+                titleBottom++;
             }
-            if (S.Beaten && titleBottom < scr.Rows)
+            if (S.Beaten[1] && titleBottom < scr.Rows)
             {
                 scr.PrintCenter(titleBottom, "THE WARDEN HAS FALLEN ONCE", Col.Rgb(210, 120, 90), Screen.Transparent);
                 titleBottom++;
@@ -768,15 +839,26 @@ namespace TerminalHell
             ren.Aspect = Term.CellAspect;
             ren.Time = world.Time;
 
-            BuildSprites();
-            // no scene-wide muzzle flash: brightening everything forces the console to redraw every cell
-            ren.Render(scr.Pix, scr.W, viewH, world.Map, cam, sprites, world.Lights, 0);
+            if (automap)
+            {
+                // the automap covers the whole view, so the full wall/floor/sprite pass would be wasted work:
+                // just the camera numbers a shot needs, plus a flat backdrop for the map overlay to darken
+                ren.PrepareCameraOnly(scr.W, viewH, cam);
+                int bg = Col.Rgb(18, 16, 20);
+                for (int i = 0; i < scr.W * viewH; i++) scr.Pix[i] = bg;
+            }
+            else
+            {
+                BuildSprites();
+                // no scene-wide muzzle flash: brightening everything forces the console to redraw every cell
+                ren.Render(scr.Pix, scr.W, viewH, world.Map, cam, sprites, world.Lights, 0);
+            }
             // the centre of the screen is where shots go: its slope depends on how far the horizon is sheared
             p.AimSlope = (ren.Horizon - viewH * 0.5f) / ren.ProjY;
             if (!automap) DrawBossLaser(viewH);
             if (!automap) DrawWeapon(viewH, dt);
             Hud.ScreenEffects(scr, world, viewH);
-            if (automap) Hud.Automap(scr, world, viewH);
+            if (automap) Hud.Automap(scr, world, viewH, automapZoom);
             else if (S.Crosshair && !p.Dead)
             {
                 bool target = false;
@@ -966,7 +1048,11 @@ namespace TerminalHell
             }
             if (t > 2.8f)
             {
-                string next = levelIndex + 1 < levels.Length ? "NEXT: " + levels[levelIndex + 1].Id + " - " + levels[levelIndex + 1].Name : "THE WAY OUT IS OPEN...";
+                int nl = NextLevel();
+                int nextEpIdx = levels[levelIndex].Episode + 1;
+                string next = nl >= 0 ? "NEXT: " + levels[nl].Id + " - " + levels[nl].Name
+                    : nextEpIdx < Levels.Episodes.Length ? "NEXT: EPISODE " + (nextEpIdx + 1) + " - " + Levels.Episodes[nextEpIdx].Name
+                    : "THE WAY OUT IS OPEN...";
                 scr.PrintCenter(row + 12, next, Col.Rgb(255, 170, 80), Screen.Transparent);
                 if (((int)(time * 2) & 1) == 0) scr.PrintCenter(Math.Min(scr.Rows - 2, row + 14), "PRESS ENTER TO CONTINUE", Col.Rgb(255, 240, 220), Screen.Transparent);
             }
@@ -1001,30 +1087,24 @@ namespace TerminalHell
             fire.Dying = true;
             fire.Draw(scr, H / 2, H, 0.8f);
             int sc = Math.Max(1, Math.Min(6, W / 50));
-            Hud.BigText(scr, "VICTORY", 3, sc, Col.Rgb(255, 240, 170), Col.Rgb(210, 60, 20));
-            string[] story =
-            {
-                "THE WARDEN IS DEAD, THE HELL GATE COLLAPSES INTO ASH BEHIND YOU.",
-                "",
-                "YOU CRAWL BACK THROUGH THE REFINERY, PAST THE OUTPOST,",
-                "INTO A GREY DAWN THAT SMELLS OF SMOKE AND SULPHUR.",
-                "",
-                "BUT AN EVIL STILL LINGERS IN THE DEEP BENEATH, NOW FREE...",
-                "",
-                "KILLS " + totalKills + "/" + totalKillsMax + "    SECRETS " + totalSecrets + "/" + totalSecretsMax + "    TIME " + FormatTime(totalTime),
-                "TOTAL SCORE  " + Num(totalScore),
-                "",
-                "THANK YOU FOR PLAYING TERMINAL HELL",
-            };
+            var episode = Levels.Episodes[Math.Max(0, Math.Min(Levels.Episodes.Length - 1, levels[levelIndex].Episode))];
+            sc = Math.Max(1, Math.Min(sc, (W - 6) / PixFont.TextWidth(episode.EndTitle, 1)));
+            Hud.BigText(scr, episode.EndTitle, 3, sc, Col.Rgb(255, 240, 170), Col.Rgb(210, 60, 20));
+            var story = new List<string>(episode.Ending);
+            story.Add("");
+            story.Add("KILLS " + totalKills + "/" + totalKillsMax + "    SECRETS " + totalSecrets + "/" + totalSecretsMax + "    TIME " + FormatTime(totalTime));
+            story.Add("TOTAL SCORE  " + Num(totalScore));
+            story.Add("");
+            if (levels[levelIndex].Episode == Levels.Episodes.Length - 1) story.Add("THANK YOU FOR PLAYING TERMINAL HELL");
             int row = (3 + 7 * sc) / 2 + 2;
             int shown = (int)(stateTime * 3);
-            for (int i = 0; i < story.Length && i < shown; i++)
+            for (int i = 0; i < story.Count && i < shown; i++)
             {
-                bool gold = i == story.Length - 1 || story[i].StartsWith("TOTAL SCORE");
+                bool gold = i == story.Count - 1 || story[i].StartsWith("TOTAL SCORE");
                 scr.PrintCenter(row + i, story[i], gold ? Col.Rgb(255, 200, 90) : Col.Rgb(230, 210, 190), Screen.Transparent);
             }
             if (stateTime > 4 && ((int)(time * 2) & 1) == 0)
-                scr.PrintCenter(Math.Min(scr.Rows - 1, row + story.Length + 2), "PRESS ENTER", Col.Rgb(255, 240, 220), Screen.Transparent);
+                scr.PrintCenter(Math.Min(scr.Rows - 1, row + story.Count + 2), "PRESS ENTER", Col.Rgb(255, 240, 220), Screen.Transparent);
         }
     }
 }

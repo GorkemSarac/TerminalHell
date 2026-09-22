@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.4.0";
+        public const string Version = "1.7.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -84,6 +84,7 @@ namespace TerminalHell
                     game.AutoTestIdle = argl.Contains("--idle");
                 }
                 game.God = argl.Contains("--god");
+                game.StartWithAutomap = argl.Contains("--automap");
                 game.tolFixed = argl.Contains("--tol");
                 int wi = argl.IndexOf("--warp");
                 if (wi >= 0 && wi + 3 < argl.Count)
@@ -152,7 +153,8 @@ namespace TerminalHell
                         return 0;
                     }
                 case "--dev-sprites":
-                    DebugTools.SaveSheet(Art.All(), a[1], 4, 10);
+                    if (a.Count > 2 && a[2] == "airport") DebugTools.SaveSheet(Art.AirportSprites(), a[1], 4, 5);
+                    else DebugTools.SaveSheet(Art.All(), a[1], 4, 10);
                     return 0;
                 case "--dev-weapons":
                     {
@@ -295,13 +297,20 @@ namespace TerminalHell
                         }
                         return 0;
                     }
+                case "--dev-music":
+                    {
+                        // --dev-music [seconds] : the level of every track, rendered offline
+                        float secs = a.Count > 1 ? float.Parse(a[1], inv) : 24f;
+                        for (int t = 0; t < 7; t++) Console.WriteLine(Music.Measure(t, secs, null));
+                        return 0;
+                    }
                 case "--dev-aim":
                     {
                         // vertical aiming: the same shot at different look angles either hits the ghoul or flies over / under it
                         float[] slopes = { 0f, 0.35f, -0.2f, -0.05f };
                         foreach (float slope in slopes)
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             // hub room: player at (8.5, 13.5) looking north, a ghoul 4 cells ahead
                             w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
@@ -377,7 +386,7 @@ namespace TerminalHell
                         int bad = 0;
                         for (int parry = 0; parry < 2; parry++)
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);   // looking north
                             // the thrower stands well back and keeps to itself: a brute never shoots, so only this one fireball is in play
@@ -413,7 +422,7 @@ namespace TerminalHell
 
                         // jumping: space lifts the player off the floor and gravity brings them back
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             var inp = new PlayerInput();
                             inp.Jump = true;
@@ -436,7 +445,7 @@ namespace TerminalHell
                         // lava burns underfoot, but not while you are in the air above it
                         for (int air = 0; air < 2; air++)
                         {
-                            var w = new World(Levels.All()[2], new Settings(), null);
+                            var w = new World(Levels.ById("E2M3"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 22.5f;            // a lava tile in the west field of E1M3
                             if (air == 1) { w.P.Z = 0.35f; w.P.OnGround = false; }
@@ -451,7 +460,7 @@ namespace TerminalHell
                         }
                         // soldiers are taller than the player: their shots have to come down to the middle of them
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
                             var ghoul = new Monster(MonsterDef.Ghoul, 8.5f, 7.5f);
@@ -467,7 +476,7 @@ namespace TerminalHell
                         // a soldier's bullet passes through its friends; a rocket's blast does not
                         for (int rocket = 0; rocket < 2; rocket++)
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 13.5f;
                             var shooter = new Monster(MonsterDef.Ghoul, 8.5f, 8.5f);
@@ -491,7 +500,7 @@ namespace TerminalHell
 
                         // the ray gun: holding the trigger winds it up, then it spends one cell and blows a hole in things
                         {
-                            var w = new World(Levels.All()[0], new Settings(), null);
+                            var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
                             w.P.Has[5] = true; w.P.Weapon = 5; w.P.Ammo[3] = 2;
@@ -518,7 +527,7 @@ namespace TerminalHell
                         // the Warden: its laser follows the player, holds still for a second, and three rockets
                         // then land on the spot the laser was resting on rather than on the player
                         {
-                            var w = new World(Levels.All()[2], new Settings(), null);
+                            var w = new World(Levels.ById("E2M3"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 21.5f; w.P.Y = 11.5f; w.P.Angle = (float)(-Math.PI / 2);
                             var boss = new Monster(MonsterDef.Warden, 21.5f, 6.5f);
@@ -566,7 +575,231 @@ namespace TerminalHell
                             if (offTarget > 0) { Console.WriteLine("  WRONG: the rockets should fly at the spot the laser held"); bad++; }
                         }
 
+                        // the Warden cannot be staggered out of an attack: repeated hits mid-windup never flip it to Pain
+                        {
+                            var w = new World(Levels.ById("E2M3"), new Settings(), null);
+                            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                            w.P.X = 21.5f; w.P.Y = 11.5f;
+                            var boss = new Monster(MonsterDef.Warden, 21.5f, 6.5f);
+                            boss.Alert(w);
+                            w.Actors.Add(boss);
+                            var idle = new PlayerInput();
+                            int staggered = 0;
+                            for (int f = 0; f < 200; f++)
+                            {
+                                w.Update(1 / 30f, idle);
+                                if (boss.State == MState.WindUp || boss.State == MState.Fire) { boss.Damage(w, 5, w.P, false); if (boss.State == MState.Pain) staggered++; }
+                            }
+                            Console.WriteLine("uninterr: " + staggered + " times staggered out of an attack");
+                            if (staggered > 0) { Console.WriteLine("  WRONG: hitting the boss mid-attack should not interrupt it"); bad++; }
+                        }
+
                         Console.WriteLine(bad == 0 ? "parry, jump, shooting, the ray gun and the Warden behave" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-automap-aim":
+                    {
+                        // AimSlope has to stay correct for shots even while the full 3D pass is skipped for the automap
+                        int bad = 0;
+                        var g = new Game(new Settings());
+                        var w = new World(Levels.ById("E2M1"), new Settings(), null);
+                        w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                        w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2); w.P.Pitch = 0.1f;
+                        var target = new Monster(MonsterDef.Ghoul, 8.5f, 9.5f);
+                        target.Health = 1000;
+                        w.Actors.Add(target);
+                        var still = new PlayerInput();
+                        for (int f = 0; f < 5; f++) w.Update(1 / 30f, still);
+                        g.DebugAutomapAim(w, 160, 46);
+                        Console.WriteLine("aim slope with automap on: " + w.P.AimSlope.ToString("0.000", inv));
+                        for (int i = 0; i < 20; i++) w.PlayerFire(w.P, WeaponDef.All[1], 0);
+                        Console.WriteLine("shots landed: " + (1000 - target.Health > 0));
+                        if (1000 - target.Health <= 0) { Console.WriteLine("  WRONG: aiming should still work with the map open"); bad++; }
+                        Console.WriteLine(bad == 0 ? "automap aim behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-talk":
+                    {
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M1"), new Settings(), null);
+                        Decor npc = null;
+                        foreach (var act in w.Actors) { var d = act as Decor; if (d != null && d.Lines != null) npc = d; }
+                        if (npc == null) { Console.WriteLine("no talkative traveller found"); return 1; }
+                        w.P.X = npc.X - 1.0f; w.P.Y = npc.Y; w.P.Angle = 0;
+                        int before = w.Messages.Count;
+                        w.PlayerUse(w.P);
+                        Console.WriteLine("talk    : messages before " + before + " after " + w.Messages.Count);
+                        if (w.Messages.Count <= before) { Console.WriteLine("  WRONG: talking should show a line"); bad++; }
+                        Console.WriteLine(bad == 0 ? "npc chatter behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-seal":
+                    {
+                        // the boarding gate: opens freely with the pass, then seals shut for good once the
+                        // player has actually walked through it into the ruined terminal
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M1"), new Settings(), null);
+                        w.P.Keys[4] = true;
+                        Door seal = null;
+                        foreach (var d in w.Map.Doors) if (d.SealBehind) seal = d;
+                        if (seal == null) { Console.WriteLine("no seal door found"); return 1; }
+                        var idle = new PlayerInput();
+                        w.P.X = seal.X + 0.5f; w.P.Y = seal.Y + 1.5f;   // the concourse side
+                        w.OpenDoor(seal, true);
+                        for (int f = 0; f < 20; f++) w.Update(1 / 30f, idle);
+                        Console.WriteLine("peek    : opened and stepped back, state " + seal.State + " sealed " + seal.Sealed);
+                        if (seal.Sealed) { Console.WriteLine("  WRONG: stepping back without going through should not seal it"); bad++; }
+                        w.OpenDoor(seal, true);
+                        for (int f = 0; f < 10; f++) w.Update(1 / 30f, idle);
+                        w.P.Y = seal.Y - 1.5f;   // walk through, to the ruin side
+                        for (int f = 0; f < 200 && !seal.Sealed; f++) w.Update(1 / 30f, idle);
+                        Console.WriteLine("through : sealed " + seal.Sealed);
+                        if (!seal.Sealed) { Console.WriteLine("  WRONG: it should seal once the player has passed through and it closes"); bad++; }
+                        w.OpenDoor(seal, true);
+                        Console.WriteLine("retry   : state " + seal.State);
+                        if (seal.State == DoorState.Opening) { Console.WriteLine("  WRONG: a sealed door should never open again"); bad++; }
+                        Console.WriteLine(bad == 0 ? "the seal door behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-secret2":
+                    {
+                        // the blue keycard hidden off the baggage hall (a lone check-in desk marks the wall), and the door it opens
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M1"), new Settings(), null);
+                        PushWall pw = null;
+                        foreach (var p in w.Map.PushWalls) if (p.X == 53 && p.Y == 21) pw = p;
+                        if (pw == null) { Console.WriteLine("no push wall off the baggage hall"); return 1; }
+                        Item key = null;
+                        foreach (var act in w.Actors) { var it = act as Item; if (it != null && it.Code == 'b') key = it; }
+                        Console.WriteLine("found   : push wall at " + pw.X + "," + pw.Y + ", blue key at " + (key == null ? "none" : key.X + "," + key.Y));
+                        if (key == null) { Console.WriteLine("  WRONG: the secret should hold a blue keycard"); bad++; }
+                        Door blue = null;
+                        foreach (var d in w.Map.Doors) if (d.Key == 2) blue = d;
+                        Console.WriteLine("door    : blue door at " + (blue == null ? "none" : blue.X + "," + blue.Y));
+                        if (blue == null) { Console.WriteLine("  WRONG: the blue key should open something"); bad++; }
+                        w.P.X = pw.X - 0.5f; w.P.Y = pw.Y + 0.5f; w.P.Angle = 0;
+                        var use = new PlayerInput(); use.Use = true;
+                        w.Update(1 / 30f, use);
+                        for (int f = 0; f < 60; f++) w.Update(1 / 30f, new PlayerInput());
+                        Console.WriteLine("pushed  : active " + pw.Active + " done " + pw.Done + " moved " + pw.Moved);
+                        if (!pw.Done || pw.Moved == 0) { Console.WriteLine("  WRONG: the secret wall should slide open"); bad++; }
+                        Console.WriteLine(bad == 0 ? "the check-in secret behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-exit":
+                    {
+                        // pressing E on the exit opens a distinct door, and the level ends shortly after
+                        var w = new World(Levels.ById("E2M1"), new Settings(), null);
+                        Door exit = null;
+                        foreach (var d in w.Map.Doors) if (d.IsExit) exit = d;
+                        if (exit == null) { Console.WriteLine("no exit door found"); return 1; }
+                        int bad = 0;
+                        Console.WriteLine("before  : state " + exit.State + " open " + exit.Open.ToString("0.00", inv) + " triggered " + w.ExitTriggered);
+                        w.OpenDoor(exit, true);
+                        var idle = new PlayerInput();
+                        for (int f = 0; f < 6; f++) w.Update(1 / 30f, idle);
+                        Console.WriteLine("after   : state " + exit.State + " open " + exit.Open.ToString("0.00", inv) + " triggered " + w.ExitTriggered + " done " + w.LevelDone);
+                        if (exit.State != DoorState.Opening || exit.Open <= 0) { Console.WriteLine("  WRONG: the exit door should be swinging open"); bad++; }
+                        if (!w.ExitTriggered) { Console.WriteLine("  WRONG: pressing the exit should trigger the level end sequence"); bad++; }
+                        for (int f = 0; f < 30 && !w.LevelDone; f++) w.Update(1 / 30f, idle);
+                        Console.WriteLine("later   : done " + w.LevelDone);
+                        if (!w.LevelDone) { Console.WriteLine("  WRONG: the level should finish shortly after"); bad++; }
+                        Console.WriteLine(bad == 0 ? "the exit door behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-terminal":
+                    {
+                        // the airport level: an unarmed start, a gate that wants the boarding pass, the incident, a soldier with a keycard,
+                        // the pistol, a save taken after the incident, and old saves finding their way to the hell episode
+                        int bad = 0;
+                        SaveGame.PathOverride = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "terminalhell-airporttest.txt");
+                        var all = Levels.All();
+                        var def = Levels.ById("E1M1");
+                        var carry = new Player(); carry.MakeUnarmed();
+                        var s = new Settings();
+                        var w = new World(def, s, carry);
+                        var armed = new List<string>();
+                        for (int i = 0; i < Player.Weapons; i++) if (w.P.Has[i]) armed.Add(i.ToString());
+                        Console.WriteLine("start   : weapons " + string.Join(",", armed.ToArray()) + ", bullets " + w.P.Ammo[0] + ", holding " + w.P.Def.Name);
+                        if (armed.Count != 1 || armed[0] != "0" || w.P.Ammo[0] != 0 || w.P.Weapon != 0) { Console.WriteLine("  WRONG: the airport starts with fists and nothing else"); bad++; }
+
+                        Door gate = null;
+                        foreach (var d in w.Map.Doors) if (d.Key == 4) gate = d;
+                        Item pass = null; Monster carrier = null;
+                        foreach (var act in w.Actors)
+                        {
+                            var it = act as Item; if (it != null && it.Code == '{') pass = it;
+                            var m = act as Monster; if (m != null && m.Carries == 'r') carrier = m;
+                        }
+                        if (gate == null || pass == null || carrier == null) { Console.WriteLine("  WRONG: the level needs a boarding gate, a pass and a soldier with the red keycard"); return 1; }
+
+                        var idle = new PlayerInput();
+                        w.OpenDoor(gate, true);
+                        Console.WriteLine("gate    : " + (gate.State == DoorState.Closed ? "stays shut without the pass" : "OPENED WITHOUT A PASS"));
+                        if (gate.State != DoorState.Closed) bad++;
+                        // a minute of calm: the public address chime may sound, and nothing else happens
+                        for (int f = 0; f < 1800; f++) w.Update(1 / 30f, idle);
+                        if (w.Incident != 0) { Console.WriteLine("  WRONG: nothing should happen until the pass is picked up"); bad++; }
+
+                        w.P.X = pass.X; w.P.Y = pass.Y;
+                        w.Update(1 / 30f, idle);
+                        for (int f = 0; f < 200; f++) w.Update(1 / 30f, idle);
+                        int after = Music.Current;
+                        Console.WriteLine("pass    : incident " + w.Incident + ", music now " + after + " (calm " + def.Music + ", after " + def.MusicAfter + "), pass key " + w.P.Keys[4]);
+                        if (!w.P.Keys[4]) { Console.WriteLine("  WRONG: picking it up should give the pass"); bad++; }
+                        if (w.Incident != 2) { Console.WriteLine("  WRONG: the incident should have run its course"); bad++; }
+                        if (after != def.MusicAfter) { Console.WriteLine("  WRONG: the music should turn ominous"); bad++; }
+                        if (w.MusicNow() != def.MusicAfter) { Console.WriteLine("  WRONG: a loaded game after the incident should start the ominous music"); bad++; }
+                        w.OpenDoor(gate, true);
+                        Console.WriteLine("gate    : " + (gate.State == DoorState.Opening ? "opens with the pass" : "STILL SHUT"));
+                        if (gate.State != DoorState.Opening) bad++;
+
+                        // the soldier who carries the key
+                        carrier.Damage(w, 1000, w.P, false);
+                        for (int f = 0; f < 10; f++) w.Update(1 / 30f, idle);
+                        bool keyOnFloor = false;
+                        foreach (var act in w.Actors) { var it = act as Item; if (it != null && it.Code == 'r' && it.Dropped) keyOnFloor = true; }
+                        Console.WriteLine("soldier : " + (keyOnFloor ? "dropped the red keycard" : "DROPPED NOTHING"));
+                        if (!keyOnFloor) bad++;
+
+                        // the pistol on its pedestal
+                        w.P.Give(w, 'g', false);
+                        Console.WriteLine("pistol  : has " + w.P.Has[1] + ", bullets " + w.P.Ammo[0]);
+                        if (!w.P.Has[1] || w.P.Ammo[0] < 10) { Console.WriteLine("  WRONG: the pistol should come with bullets"); bad++; }
+
+                        // the ceiling sign really slides
+                        var f0 = (int[])Art.MarqueeFrame(0).Px.Clone();
+                        var f1 = Art.MarqueeFrame(0.5f).Px;
+                        int changed = 0;
+                        for (int i = 0; i < f0.Length; i++) if (f0[i] != f1[i]) changed++;
+                        Console.WriteLine("sign    : " + changed + " pixels moved in half a second");
+                        if (changed < 50) { Console.WriteLine("  WRONG: the sign should scroll"); bad++; }
+
+                        // saving after the incident keeps it, and the carried keycard
+                        var head = new SaveHeader { Level = Levels.IndexOf("E1M1"), Difficulty = s.Difficulty };
+                        var w3 = new World(def, s, carry);
+                        w3.TriggerIncident();
+                        for (int f = 0; f < 200; f++) w3.Update(1 / 30f, idle);
+                        SaveGame.Save(head, w3);
+                        var head2 = SaveGame.ReadHeader();
+                        var w4 = head2 == null ? null : SaveGame.Load(head2, all, s);
+                        int carriers = 0;
+                        if (w4 != null) foreach (var act in w4.Actors) { var m = act as Monster; if (m != null && m.Carries == 'r') carriers++; }
+                        Console.WriteLine("save    : incident " + (w4 == null ? -1 : w4.Incident) + ", soldiers still carrying the key " + carriers);
+                        if (w4 == null || w4.Incident != 2 || carriers != 1) { Console.WriteLine("  WRONG: the save should keep the incident and the key carrier"); bad++; }
+
+                        // an old save (a bare level number) is one of the hell levels
+                        var text = System.IO.File.ReadAllText(SaveGame.Path).Replace("levelid E1M1", "level 1");
+                        System.IO.File.WriteAllText(SaveGame.Path, text);
+                        var old = SaveGame.ReadHeader();
+                        Console.WriteLine("old save: level 1 is now " + (old == null ? "unreadable" : all[old.Level].Id));
+                        if (old == null || all[old.Level].Id != "E2M2") { Console.WriteLine("  WRONG: level 1 of the old numbering was the toxic refinery"); bad++; }
+
+                        // the two episodes
+                        Console.WriteLine("episodes: " + Levels.Episodes.Length + ", first levels " + all[Levels.FirstOf(0)].Id + " and " + all[Levels.FirstOf(1)].Id);
+                        if (all[Levels.FirstOf(0)].Id != "E1M1" || all[Levels.FirstOf(1)].Id != "E2M1") { Console.WriteLine("  WRONG: the episodes start at E1M1 and E2M1"); bad++; }
+
+                        Console.WriteLine(bad == 0 ? "the airport behaves" : bad + " problem(s)");
                         return bad;
                     }
                 case "--dev-save":
@@ -575,7 +808,7 @@ namespace TerminalHell
                         SaveGame.PathOverride = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "terminalhell-savetest.txt");
                         var s = new Settings();
                         var levels = Levels.All();
-                        var w = new World(levels[1], s, null);
+                        var w = new World(levels[Levels.IndexOf("E2M2")], s, null);
                         w.P.Has[2] = w.P.Has[5] = true;
                         w.P.Ammo[1] = 20; w.P.Ammo[3] = 15;
                         var rng = new Random(11);
@@ -616,7 +849,7 @@ namespace TerminalHell
 
                         var head = new SaveHeader
                         {
-                            Level = 1, TotalKills = 5, TotalKillsMax = 9, TotalSecrets = 1, TotalSecretsMax = 3,
+                            Level = Levels.IndexOf("E2M2"), TotalKills = 5, TotalKillsMax = 9, TotalSecrets = 1, TotalSecretsMax = 3,
                             TotalScore = 1234, TotalTime = 99.5f, Difficulty = s.Difficulty,
                         };
                         if (!SaveGame.Save(head, w)) { Console.WriteLine("could not write the save file"); return 1; }
@@ -666,13 +899,15 @@ namespace TerminalHell
                             {
                                 int i = sp.Y * m.W + sp.X;
                                 if (sp.C == 'r') keyAt[i] = 1; else if (sp.C == 'b') keyAt[i] = 2; else if (sp.C == 'y') keyAt[i] = 3;
+                                else if (sp.C == '{') keyAt[i] = 4;   // the boarding pass
+                                else if (sp.C == '`') keyAt[i] = 1;   // a soldier who carries the red keycard
                                 else if (sp.C == 'K') keyAt[i] = 3;   // the boss drops the yellow key
                                 if ("^>v<".IndexOf(sp.C) >= 0) start = i;
                                 else things.Add(sp);
                             }
-                            var keys = new bool[4];
+                            var keys = new bool[5];
                             bool[] reach = null;
-                            for (int pass = 0; pass < 5; pass++)
+                            for (int pass = 0; pass < 6; pass++)
                             {
                                 reach = new bool[m.W * m.H];
                                 var q = new Queue<int>();
@@ -698,18 +933,10 @@ namespace TerminalHell
                                 if (!got) break;
                             }
                             bool exit = false;
-                            for (int i = 0; i < m.W * m.H; i++)
-                            {
-                                if (m.Kind[i] != CellKind.Wall || m.WallTex[i] != Tex.EXIT_OFF) continue;
-                                for (int k = 0; k < 8; k += 2)
-                                {
-                                    int nx = i % m.W + Map.DX8[k], ny = i / m.W + Map.DY8[k];
-                                    if (m.In(nx, ny) && reach[ny * m.W + nx]) exit = true;
-                                }
-                            }
+                            foreach (var xd in m.Doors) if (xd.IsExit && reach[xd.Y * m.W + xd.X]) exit = true;
                             var stranded = new List<string>();
                             foreach (var t in things) if (!reach[t.Y * m.W + t.X]) stranded.Add(t.C + "@" + t.X + "," + t.Y);
-                            Console.WriteLine(def.Id + ": exit " + (exit ? "REACHABLE" : "NOT REACHABLE") + "  keys " + (keys[1] ? "R" : "-") + (keys[2] ? "B" : "-") + (keys[3] ? "Y" : "-") +
+                            Console.WriteLine(def.Id + ": exit " + (exit ? "REACHABLE" : "NOT REACHABLE") + "  keys " + (keys[1] ? "R" : "-") + (keys[2] ? "B" : "-") + (keys[3] ? "Y" : "-") + (keys[4] ? "P" : "-") +
                                 (stranded.Count > 0 ? "  unreachable things: " + string.Join(" ", stranded.ToArray()) : "  all things reachable"));
                             if (!exit) failures++;
                         }

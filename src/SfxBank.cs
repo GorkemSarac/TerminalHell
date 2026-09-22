@@ -229,6 +229,21 @@ namespace TerminalHell
             }
             bank[(int)Sfx.RayGun] = b;
 
+            // the airport's public address chime: two soft bell notes, the second one lower, and a long ring-out
+            b = Buf(2.4f);
+            {
+                float[] notes = { 784f, 659f };
+                for (int k = 0; k < 2; k++)
+                {
+                    float t0 = k * 0.62f;
+                    Tone(b, t0, 0.5f, notes[k], 1.6f, 0, 0.55f);
+                    Tone(b, t0, 0.16f, notes[k] * 2.01f, 1.2f, 0, 0.3f);
+                    Tone(b, t0, 0.06f, notes[k] * 3.02f, 0.8f, 0, 0.15f);
+                }
+                Normalize(b, 0.5f);
+            }
+            bank[(int)Sfx.Chime] = b;
+
             // parry: a hard metal clang with a short ring
             b = Buf(0.5f);
             {

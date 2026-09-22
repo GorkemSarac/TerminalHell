@@ -50,6 +50,17 @@ namespace TerminalHell
         DynLight[] dl = new DynLight[16];
         int dlCount;
 
+        /// <summary>Just the camera numbers a shot needs (Horizon, ProjY): for when the 3D scene itself won't be
+        /// seen this frame (the automap fully covers it) and the full walk/floor/sprite pass would be wasted.</summary>
+        public void PrepareCameraOnly(int pixW, int viewH, Camera c)
+        {
+            W = pixW; H = viewH;
+            float planeLen = (float)Math.Tan(c.Fov * Math.PI / 360);
+            Proj = (W * 0.5f) / planeLen;
+            ProjY = Proj * Aspect;
+            Horizon = H * 0.5f + c.Pitch * H;
+        }
+
         public void Render(int[] pix, int pixW, int viewH, Map m, Camera c, List<SpriteInst> sprites, List<DynLight> lights, float extraLight)
         {
             W = pixW; H = viewH;
@@ -265,6 +276,7 @@ namespace TerminalHell
                 {
                     case FloorKind.A: t = Tex.Flats[map.Def.FloorA].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.B: t = Tex.Flats[map.Def.FloorB].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
+                    case FloorKind.C: t = Tex.Flats[map.Def.FloorC].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.Outdoor: t = Tex.Flats[map.Def.FloorOut].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
                     case FloorKind.Bridge:
                     case FloorKind.BridgeOut: t = Tex.Flats[Tex.F_GRATE].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)]; break;
@@ -305,7 +317,7 @@ namespace TerminalHell
                     pix[y * W + x] = SkyPix(skyU, y);
                     continue;
                 }
-                int flat = fk == FloorKind.B || fk == FloorKind.Bridge ? map.Def.CeilB : map.Def.CeilA;
+                int flat = fk == FloorKind.B || fk == FloorKind.Bridge ? map.Def.CeilB : fk == FloorKind.C ? map.Def.CeilC : map.Def.CeilA;
                 int tu = (int)(wx * Tex.S), tv = (int)(wy * Tex.S);
                 int t = Tex.Flats[flat].Px[(tv & Tex.Mask) * Tex.S + (tu & Tex.Mask)];
                 float lr, lg, lb;
@@ -368,7 +380,7 @@ namespace TerminalHell
 
         int SkyPix(int u, int y)
         {
-            var sky = map.Def.NightSky ? Tex.SkyNight : Tex.Sky;
+            var sky = Tex.Skies[map.Def.Sky];
             float rowsAbove = Horizon - (y + 0.5f);
             int v = Tex.SKY_H - 1 - (int)(rowsAbove * Tex.SKY_H / (H * 0.85f)) + 6;
             if (v < 0) v = 0;

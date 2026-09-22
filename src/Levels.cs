@@ -1,32 +1,164 @@
-// TERMINAL HELL - the episode: three levels.
+// TERMINAL HELL - the campaign: two episodes. Episode 1 is on Earth (an airport under attack), episode 2 is the descent into Hell.
 //
 // Map legend (one character per cell):
 //   walls   1 stone  2 brick  3 tech  4 wood  5 marble  6 flesh  7 computer  8 rust  9 skulls  0 rock (tall cliff)
-//           X exit switch   $ secret push wall (use it to slide it away)
+//           A terminal wall  F window onto the apron  H departures board  I scorched wall  J broken window  M dead board
+//           O safety-room wall  P safety-room wall with a first-aid cross  V concrete  Z hangar cladding
+//           X exit switch and door (opens once thrown, styled differently from a normal door)
+//           $ secret push wall (use it to slide it away)
 //   doors   D door   R/B/Y red/blue/yellow locked doors
-//   floors  . floor A   _ floor B   , outdoor (open sky)   ~ lava   : outdoor lava   = toxic slime   ; outdoor slime
+//           } boarding gate (needs the boarding pass; seals shut for good once you're through it)
+//   floors  . floor A   _ floor B   - floor C   , outdoor (open sky)   ~ lava   : outdoor lava   = toxic slime   ; outdoor slime
 //           # metal walkway (safe to cross over lava or slime)
 //   player  ^ > v <  start position and facing
-//   enemies z ghoul (rifle)   i fiend (fireballs)   p brute (melee)   K the Warden (boss)
+//   enemies z ghoul (rifle)   ` a ghoul carrying the red keycard   i fiend (fireballs)   p brute (melee)   K the Warden (boss)
 //   items   h stimpack  m medikit  + health bonus  o soul orb  a armor bonus  G green armor  U blue armor
 //           c clip  C box of bullets  e shells  E box of shells  q rocket  Q box of rockets
 //           w soul cells (ray gun ammo: secret rooms only)
-//           S shotgun  N minigun  L rocket launcher  W ray gun  r/b/y keycards
+//           g pistol  S shotgun  N minigun  L rocket launcher  W ray gun  r/b/y keycards  { boarding pass
 //   decor   % explosive barrel  * ceiling lamp  ! torch  t tech lamp  | pillar  & corpse  x blood pool  k skulls
+//           d check-in desk  j/l waiting seats (empty / taken)  ( wrecked seats  ) rubble  n plant  s luggage  T luggage cart
+//           u traveller  @ dead traveller  ? vending machine  / bin  f fire  [ scrolling ceiling sign  ] the ruined sign
+using System;
+
 namespace TerminalHell
 {
     static class Levels
     {
+        /// <summary>The two episodes, in the order the menu lists them.</summary>
+        public static readonly EpisodeDef[] Episodes =
+        {
+            new EpisodeDef
+            {
+                Name = "EARTH", Blurb = "AN AIRPORT ON A QUIET MORNING",
+                EndTitle = "TO BE CONTINUED",
+                Ending = new[]
+                {
+                    "YOU STAND ON THE APRON AND THE SKY IS STILL BLUE.",
+                    "",
+                    "BEHIND YOU THE TERMINAL BURNS. IN FRONT OF YOU,",
+                    "THE RUNWAY, AND EVERYTHING THAT CAME THROUGH IT.",
+                    "",
+                    "THE WAY BACK HOME IS LONGER THAN IT WAS THIS MORNING.",
+                },
+            },
+            new EpisodeDef
+            {
+                Name = "HELL", Blurb = "THE DESCENT",
+                EndTitle = "VICTORY",
+                Ending = new[]
+                {
+                    "THE WARDEN IS DEAD, THE HELL GATE COLLAPSES INTO ASH BEHIND YOU.",
+                    "",
+                    "YOU CRAWL BACK THROUGH THE REFINERY, PAST THE OUTPOST,",
+                    "INTO A GREY DAWN THAT SMELLS OF SMOKE AND SULPHUR.",
+                    "",
+                    "BUT AN EVIL STILL LINGERS IN THE DEEP BENEATH, NOW FREE...",
+                },
+            },
+        };
+
+        /// <summary>Every level, episode 1 first. Each one knows which episode it belongs to.</summary>
         public static LevelDef[] All()
         {
-            return new[] { Level1(), Level2(), Level3() };
+            var list = new[] { Terminal(), Hell1(), Hell2(), Hell3() };
+            list[0].Episode = 0;
+            for (int i = 1; i < list.Length; i++) list[i].Episode = 1;
+            return list;
         }
 
-        static LevelDef Level1()
+        public static int IndexOf(string id)
+        {
+            var all = All();
+            for (int i = 0; i < all.Length; i++) if (all[i].Id == id) return i;
+            return -1;
+        }
+
+        public static LevelDef ById(string id)
+        {
+            int i = IndexOf(id);
+            if (i < 0) throw new ArgumentException("no level " + id);
+            return All()[i];
+        }
+
+        /// <summary>The first level of an episode.</summary>
+        public static int FirstOf(int episode)
+        {
+            var all = All();
+            for (int i = 0; i < all.Length; i++) if (all[i].Episode == episode) return i;
+            return 0;
+        }
+
+        static LevelDef Terminal()
         {
             return new LevelDef
             {
-                Id = "E1M1", Name = "OUTPOST GATE", Music = 1,
+                Id = "E1M1", Name = "TERMINAL", Music = 5, MusicAfter = 6, Sky = 2, Unarmed = true, Chime = true,
+                Intro = "A QUIET MORNING AT THE AIRPORT.",
+                FloorA = Tex.F_AIR, CeilA = Tex.C_AIR, FloorB = Tex.F_WRECK, CeilB = Tex.C_WRECK, FloorC = Tex.F_SAFE, CeilC = Tex.C_SAFE, FloorOut = Tex.F_APRON,
+                Ambient = Col.Rgb(70, 70, 76), SkyLight = Col.Rgb(214, 224, 244), FogColor = Col.Rgb(30, 28, 34), FogDensity = 0.022f, Par = "5:00",
+                Map = new[]
+                {
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVIIIJJJIIIMMIIIJJIIMIIIJJIIIIIIIIJJIIMIMMIIJJIIVVVVVVVVVV",
+                "VVOOPPPOO___________f______________h_Ia_______@____m_IVVVVVVVVVV",
+                "VVO-----O__*___f_)_______(___f___s___I_sf_______*_(_fIVVVVVVVVVV",
+                "VVO-c---O____@_________s___`____@____I______z___@____IVVVVVVVVVV",
+                "VVP--+--O___(_*_______)________)_________*___)______cIVVVVVVVVVV",
+                "VVP-----R_______s___@_____*______f_____(@________z___IVVVVVVVVVV",
+                "VVO--*m-O__f_z_____]____@___)_____(_______)__g____*@_IVVVVVVVVVV",
+                "VVO-----O_____@__@____s_______@______I_________)_____IVVVVVVVVVV",
+                "VVOOOOOOO______(_______f__@_____*__f_I_c___@______)_sIVVVVVVVVVV",
+                "VVVVVVVVI___f____________)___________I___(___*z______IVVVVVVVVVV",
+                "VVVVVVVVIIIIIIAAAAH}HAAAAAIIIIIIIIIIIIf_____s______f_IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVA..........AVVVVVVVVVVVI_______________IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF/..u.....jAVVVVVVVVVVVIIIIIIIIDIIIIIIIIVVVVVVVVVV",
+                "VVVVVVVVVVVVVVFn...[....lAVVVVVVVVVVVVVI_____________IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF..*...*u..HVVVVVVVVVVVVVI_f_____*_____IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF..........AVVVVVVVVVVVVVI____T________IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF.u..{....jAVVVVVVVVVVVVVI___z_@__s____IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF..........AVVVVVVVVIIIIII_s__*_____z__I..VVVVVVVV",
+                "VVVVVVVVVVVVVVF......u.s.HVVVVVVVVI_m__I__s____@____d$bwVVVVVVVV",
+                "VVVVVVVVVVVVVVFn...[....jAVVVVVVVVIG_w_$*____s______sI..VVVVVVVV",
+                "VVVVVVVVVVVVVVF..*...*..lAVVVVVVVVI_c__I_@_______T___IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF.s........AVVVVVVVVIIIIII___sh_____*@_IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF..u.......HVVVVVVVVVVVVVI_______)__s__IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVF.........jAVVVVVVVVVVVVVI_T_______z___IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVFn...[s...lAVVVVVVVVVVVVVI______z____T_IVVVVVVVVVV",
+                "VVVVVVVVVVVVVVA..*...*../AVVVVVVVVVVVVVI__)*_________IVVVVVVVVVV",
+                "VVVVVVVVVAAAHAA..........AAHAAAVVVVVVVVI_c_____sC___fIVVVVVVVVVV",
+                "VVVVVVVVVA.?/............../?.AVVVVVVVVI_____________IVVVVVVVVVV",
+                "VVVVVVVVVF....................AVVVVVVVVVVVVVVVDVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVFn...u..............dAVVVVV,,,,,@,,,,,,,,,,,,,ZZZZZZ,,Z",
+                "VVVVVVVVVF...*.....*.u..s*.u.dAVVVVV,,,,,,,,,,,,,,,,,,,Z,z,,Z,aZ",
+                "VVVVVVVVVF...................dHVVVVV,,,,,),,,,,,m,,,T,,Baw,qZ,,Z",
+                "VVVVVVVVVF....j.l..[..j.l..u.dAVVVVV,,,,,,,,z,,,,,@,,,,Z,,z,Z,,Z",
+                "VVVVVVVVVF........u...........AVVVVV,,,,%,,,,,,,,s,,,,,ZZZZZZ,,Z",
+                "VVVVVVVVVF...................dAVVVVV,,,,,,,,VVVV,,,,,z,,,,),%,,Z",
+                "VVVVVVVVVFn........u......u..dAVVVVV,,,s,,,,VVVV,,,,,,,,T,,,,,,Z",
+                "VVVVVVVVVF...*l.j..*..l.j*.u.dAVVVVV,,,,,,,,VVVV,,,,,,,,,,,,,,,X",
+                "VVVVVVVVVF...................dAVVVVV,c,,,,,,,,,,,,%,,,,,,,,,,,,Z",
+                "VVVVVVVVVF..u......[s.........HVVVVV,,,,,,T,,,,),,,,,,,,,,z,,,,Z",
+                "VVVVVVVVVF.s.............u.../AVVVVV,,,,,,,,,,,,,,,VVV,,,,,,,,GZ",
+                "VVVVVVVVVF....j.l.....j.l.....AVVVVV,,,,,,,,,,,,z,,VVV,,,,,,,s,Z",
+                "VVVVVVVVVFn..*.....*.....*s...AVVVVV,,T,,,,,,,,,,,,VVV,%,s,,,,,Z",
+                "VVVVVVVVVF.....s...^.........nAVVVVV,,,,,,,,,,f,,,,,,@,,,,,C,a,Z",
+                "VVVVVVVVVA....................AVVVVV,,,,,,,,,,,,,,,,,,,,,,,,,,,Z",
+                "VVVVVVVVVAFFFFFFFFFFFFFFFFFFFFAVVVVVZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                },
+            };
+        }
+
+
+        static LevelDef Hell1()
+        {
+            return new LevelDef
+            {
+                Id = "E2M1", Name = "OUTPOST GATE", Music = 1,
                 Intro = "THE RELAY OUTPOST WENT DARK THREE HOURS AGO.",
                 FloorA = Tex.F_TILE, CeilA = Tex.C_PANEL, FloorB = Tex.F_METAL, CeilB = Tex.C_STONE, FloorOut = Tex.F_DIRT,
                 Ambient = Col.Rgb(82, 79, 86), SkyLight = Col.Rgb(240, 190, 160), FogColor = Col.Rgb(10, 4, 3), FogDensity = 0.05f, Par = "2:30",
@@ -66,11 +198,11 @@ namespace TerminalHell
             };
         }
 
-        static LevelDef Level2()
+        static LevelDef Hell2()
         {
             return new LevelDef
             {
-                Id = "E1M2", Name = "TOXIC REFINERY", Music = 2, NightSky = true,
+                Id = "E2M2", Name = "TOXIC REFINERY", Music = 2, Sky = 1,
                 Intro = "THE REFINERY PUMPS SOMETHING THAT IS NOT OIL.",
                 FloorA = Tex.F_METAL, CeilA = Tex.C_PANEL, FloorB = Tex.F_GRATE, CeilB = Tex.C_STONE, FloorOut = Tex.F_GRATE,
                 Ambient = Col.Rgb(68, 78, 68), SkyLight = Col.Rgb(135, 125, 165), FogColor = Col.Rgb(4, 12, 4), FogDensity = 0.072f, Par = "3:30",
@@ -112,11 +244,11 @@ namespace TerminalHell
             };
         }
 
-        static LevelDef Level3()
+        static LevelDef Hell3()
         {
             return new LevelDef
             {
-                Id = "E1M3", Name = "GATES OF HELL", Music = 3,
+                Id = "E2M3", Name = "GATES OF HELL", Music = 3,
                 Intro = "THE GATE IS OPEN. THE WARDEN IS WAITING.",
                 FloorA = Tex.F_HELL, CeilA = Tex.C_FLESH, FloorB = Tex.F_MARBLE, CeilB = Tex.C_STONE, FloorOut = Tex.F_HELL,
                 Ambient = Col.Rgb(98, 64, 58), SkyLight = Col.Rgb(240, 150, 115), FogColor = Col.Rgb(26, 4, 2), FogDensity = 0.052f, Par = "5:00",
@@ -150,10 +282,10 @@ namespace TerminalHell
                 "60:::::,::::::9~~____++____~~9...!6........6666",
                 "60:::::,,,,,,,D##___z______##D.+..6.....e..6666",
                 "60:::::,::::::9~~__k____k__~~9.+..6...p....6666",
-                "60:::::,::::::9~~____e_____~~9....6........6wo6",
+                "60:::::,::::::9~~____e_____~~9....6...L....6wo6",
                 "60:::::k::::::9__!________!__9....6........$..6",
                 "60:::::,::::::9999555D55559999...i6.......C6wU6",
-                "60:::::,::::::::::5!____e56666.....Lz......6666",
+                "60:::::,::::::::::5!____e56666.....z.......6666",
                 "60,i,,,,,,p,,:::W:5______56666z.........!..6666",
                 "60q,,,,,,,,,m:::::5__^__!56666.......k...i.6666",
                 "6000000000000000005a____c56666..m..........6666",

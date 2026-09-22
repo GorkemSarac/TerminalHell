@@ -121,10 +121,11 @@ namespace TerminalHell
         public float AimX, AimY, AimZ;   // where the boss's sight laser rests, and what it fires at
         public bool Aiming, AimLocked;
         /// <summary>How long the boss holds its aim still before the rocket leaves: time enough to get out of the way.</summary>
-        public const float AimLock = 1.0f;
+        public const float AimLock = 0.55f;
         public int StrafeDir = 1;
         public int ShotsLeft;
         public bool Ambush;
+        public char Carries;         // an item this one always drops when it dies (a keycard, say)
         float stuckTime;
 
         public Monster(MonsterDef d, float x, float y)
@@ -182,7 +183,9 @@ namespace TerminalHell
                 return;
             }
             if (State == MState.Idle) Alert(w);
-            if (w.Rng.NextDouble() < Def.PainChance && State != MState.Fire)
+            // the boss cannot be staggered out of an attack once it has committed to one
+            bool bossAttacking = Def.Boss && (State == MState.WindUp || State == MState.Fire);
+            if (!bossAttacking && w.Rng.NextDouble() < Def.PainChance && State != MState.Fire)
             {
                 State = MState.Pain;
                 StateTime = Def.PainTime;
@@ -200,7 +203,8 @@ namespace TerminalHell
             w.Kills++;
             w.Score += Def.Score;
             // not every corpse leaves something behind: ammo is meant to be worth looking for
-            if (Def.Drop != '\0' && w.Rng.NextDouble() < Def.DropChance) w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
+            if (Carries != '\0') w.SpawnItem(Carries, X + 0.05f, Y + 0.05f, true);
+            else if (Def.Drop != '\0' && w.Rng.NextDouble() < Def.DropChance) w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
             if (Def.Boss) w.BossKilled();
         }
 
@@ -245,7 +249,7 @@ namespace TerminalHell
                     {
                         PerformAttack(w, dist);
                         State = MState.Fire;
-                        StateTime = Def.Attack == AttackType.Melee ? 0.3f : 0.22f;
+                        StateTime = Def.Attack == AttackType.Melee ? 0.3f : (Def.Boss ? 0.1f : 0.22f);
                     }
                     return;
                 case MState.Fire:
@@ -256,7 +260,7 @@ namespace TerminalHell
                         {
                             ShotsLeft--;
                             State = MState.WindUp;
-                            StateTime = Def.Boss ? AimLock + 0.2f : 0.2f;
+                            StateTime = Def.Boss ? AimLock + 0.15f : 0.2f;
                         }
                         else
                         {
@@ -467,8 +471,9 @@ namespace TerminalHell
         {
             switch (c)
             {
-                case 'S': case 'N': case 'L': case 'W': return 0.24f;              // weapons (they sit on a pedestal)
+                case 'S': case 'N': case 'L': case 'W': case 'g': return 0.24f;    // weapons (they sit on a pedestal)
                 case 'r': case 'b': case 'y': return 0.33f;                        // keycards
+                case '{': return 0.3f;                                             // the boarding pass
                 case 'o': case 'U': case 'G': return 0.45f;                        // soul orb and armour
                 case 'm': case 'C': case 'E': case 'Q': return 0.32f;              // the big boxes
                 default: return 0.25f;                                             // stimpacks, clips, shells, bonuses
@@ -487,7 +492,7 @@ namespace TerminalHell
 
         public override void Update(World w, float dt)
         {
-            if (Code == 'o' || Code == 'r' || Code == 'b' || Code == 'y' || Code == '+')
+            if (Code == 'o' || Code == 'r' || Code == 'b' || Code == 'y' || Code == '+' || Code == '{')
                 Z = 0.06f + 0.05f * (float)Math.Sin(w.Time * 3 + Tag);
         }
     }
@@ -497,6 +502,7 @@ namespace TerminalHell
         public Image Img;
         public Image[] Anim;
         public bool Glows;
+        public string[] Lines;    // if set, pressing E while facing this one shows a random line of chatter
 
         public Decor(Image img, float x, float y, bool solid, float radius)
         {
@@ -511,6 +517,21 @@ namespace TerminalHell
         }
 
         public override bool Bright { get { return Glows; } }
+    }
+
+    /// <summary>The sign hanging from the ceiling of the calm terminal, its text sliding by.</summary>
+    sealed class Marquee : Actor
+    {
+        public Marquee(float x, float y)
+        {
+            Kind = ActorKind.Decor;
+            X = x; Y = y; Solid = false; Radius = 0.2f;
+            Scale = 1f / 42;
+            Z = 0.68f;
+        }
+
+        public override Image Sprite(World w) { return Art.MarqueeFrame(w.Time); }
+        public override bool Bright { get { return true; } }
     }
 
     sealed class Barrel : Actor

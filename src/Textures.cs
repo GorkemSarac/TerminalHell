@@ -3,7 +3,7 @@ using System;
 
 namespace TerminalHell
 {
-    static class Tex
+    static partial class Tex
     {
         public const int S = 64;         // texture size
         public const int Mask = S - 1;
@@ -13,23 +13,40 @@ namespace TerminalHell
         public const int EXIT_OFF = 11, EXIT_ON = 12, DOOR = 13, DOOR_RED = 14, DOOR_BLUE = 15, DOOR_YELLOW = 16, JAMB = 17;
         // one variant of every plain wall (STONE..ROCK): secret walls that can be pushed, and the lit panels beside doors
         public const int SECRET_BASE = 18, DOORLIT_BASE = 28;
-        public const int WALL_COUNT = 38;
+        // the earth episode: airport terminal walls (TERM..HANGAR), with their own secret and lit-panel variants after them
+        public const int TERM = 38, GLASS = 39, BOARD = 40, SCORCH = 41, SHATTER = 42, DEADBOARD = 43, SAFE = 44, SAFECROSS = 45, CONCRETE = 46, HANGAR = 47;
+        public const int SECRET2_BASE = 48, DOORLIT2_BASE = 58, DOOR_PASS = 68;
+        public const int DOOR_EXIT = 69;    // the exit's own door, styled differently from a normal one
+        public const int WALL_COUNT = 70;
 
         /// <summary>The "this one slides away" version of a wall texture (secret push walls).</summary>
-        public static int SecretOf(int tex) { return tex >= STONE && tex <= ROCK ? SECRET_BASE + tex - STONE : tex; }
+        public static int SecretOf(int tex)
+        {
+            if (tex >= STONE && tex <= ROCK) return SECRET_BASE + tex - STONE;
+            if (tex >= TERM && tex <= HANGAR) return SECRET2_BASE + tex - TERM;
+            return tex;
+        }
 
         /// <summary>The version with a light strip, used on the walls either side of a door.</summary>
-        public static int DoorLitOf(int tex) { return tex >= STONE && tex <= ROCK ? DOORLIT_BASE + tex - STONE : tex; }
+        public static int DoorLitOf(int tex)
+        {
+            if (tex >= STONE && tex <= ROCK) return DOORLIT_BASE + tex - STONE;
+            if (tex >= TERM && tex <= HANGAR) return DOORLIT2_BASE + tex - TERM;
+            return tex;
+        }
 
         // flat texture ids (index into Flats)
         public const int F_TILE = 0, F_METAL = 1, F_DIRT = 2, F_WOOD = 3, F_HELL = 4, F_LAVA = 5, F_NUKAGE = 6;
         public const int C_PANEL = 7, C_STONE = 8, C_WOOD = 9, F_GRATE = 10, F_MARBLE = 11, C_FLESH = 12;
-        public const int FLAT_COUNT = 13;
+        public const int F_AIR = 13, F_WRECK = 14, F_SAFE = 15, F_APRON = 16, C_AIR = 17, C_WRECK = 18, C_SAFE = 19;
+        public const int FLAT_COUNT = 20;
 
         public static Image[] Walls = new Image[WALL_COUNT];
         public static Image[] Flats = new Image[FLAT_COUNT];
         public static Image Sky;          // red hell sky
         public static Image SkyNight;     // darker sky variant
+        public static Image SkyEarth;     // blue daytime sky over the airport
+        public static Image[] Skies = new Image[3];
 
         public static void Build()
         {
@@ -52,6 +69,7 @@ namespace TerminalHell
             Walls[DOOR_BLUE] = DoorTex(Col.Rgb(40, 110, 255));
             Walls[DOOR_YELLOW] = DoorTex(Col.Rgb(255, 210, 40));
             Walls[JAMB] = JambTex();
+            Walls[DOOR_EXIT] = ExitDoorTex();
             Walls[0] = Walls[STONE];
             for (int t = STONE; t <= ROCK; t++)
             {
@@ -75,6 +93,8 @@ namespace TerminalHell
 
             Sky = MakeSky(Col.Rgb(40, 4, 8), Col.Rgb(210, 70, 20), Col.Rgb(255, 170, 60), 5);
             SkyNight = MakeSky(Col.Rgb(4, 4, 18), Col.Rgb(60, 30, 70), Col.Rgb(160, 70, 60), 9);
+            BuildAirport();
+            Skies[0] = Sky; Skies[1] = SkyNight; Skies[2] = SkyEarth;
         }
 
         static int Px(Image im, int x, int y) { return im.Px[(y & Mask) * S + (x & Mask)]; }
@@ -400,6 +420,38 @@ namespace TerminalHell
             for (int y = 52; y < 57; y++)
                 for (int x = 29; x < 35; x++)
                     im.Px[y * S + x] = lc | Col.OPAQUE | Col.EMISSIVE;
+            return im;
+        }
+
+        /// <summary>The exit's own door: hazard stripes, a glowing EXIT sign, styled to stand out from a normal door.</summary>
+        static Image ExitDoorTex()
+        {
+            var im = new Image(S, S);
+            int baseCol = Col.Rgb(56, 62, 58), stripeA = Col.Rgb(226, 190, 40), stripeB = Col.Rgb(24, 22, 20);
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float n = Noise.Fbm(x, y, S, 8, 3, 131);
+                    int c = Vary(baseCol, 0.85f + n * 0.25f);
+                    if (y < 7 || y >= S - 7)
+                    {
+                        int band = ((x + (y < 7 ? y : S - 1 - y)) / 4) & 1;
+                        c = band == 0 ? stripeA : stripeB;
+                    }
+                    if (x == 31) c = Col.Rgb(18, 18, 18);     // the seam the two leaves slide apart at
+                    if (x == 32) c = Col.Rgb(150, 150, 150);
+                    if ((x == 3 || x == 60) && y % 10 == 5) c = Col.Rgb(200, 200, 190);
+                    Set(im, x, y, c);
+                }
+            for (int y = 26; y < 38; y++)
+                for (int x = 2; x < S - 2; x++)
+                    im.Px[y * S + x] = Col.Rgb(20, 34, 26) | Col.OPAQUE;
+            TinyText(im, "EXIT", 22, 30, Col.Rgb(70, 255, 120));
+            for (int y = 29; y < 35; y++)
+            {
+                im.Px[y * S + 6] = Col.Rgb(80, 255, 120) | Col.OPAQUE | Col.EMISSIVE;
+                im.Px[y * S + S - 7] = Col.Rgb(80, 255, 120) | Col.OPAQUE | Col.EMISSIVE;
+            }
             return im;
         }
 

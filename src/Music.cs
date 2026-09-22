@@ -18,6 +18,9 @@ namespace TerminalHell
             public float PadVol = 0.07f;
             public float BassVol = 0.22f;
             public bool Fifth = true;
+            public string[] Lead;       // optional bell melody, same layout as Bass but always in the key of Root (notes are not transposed)
+            public float LeadVol = 0.12f;
+            public int[] Chord;         // pad intervals, three or four notes (default: a minor triad)
         }
 
         static Track[] tracks;
@@ -34,10 +37,15 @@ namespace TerminalHell
         static float bFreq, bEnv, bDecay = 0.1f, bLp;
         // pad state
         static float padRoot = -1, padTarget = -1, padMix;
-        static double[] pph = new double[6];
+        static double[] pph = new double[16];
+        // bell voices for the melody
+        const int LeadVoices = 4;
+        static readonly double[] leadPh1 = new double[LeadVoices], leadPh2 = new double[LeadVoices], leadPh3 = new double[LeadVoices];
+        static readonly float[] leadFreq = new float[LeadVoices], leadAge = new float[LeadVoices];
+        static int leadNext;
         static float fade = 1;
         static uint rs = 777;
-        static readonly float[] PadIntervals = { 0, 3, 7 };
+        static readonly int[] PadIntervals = { 0, 3, 7 };
 
         static float Rnd() { rs = rs * 1664525 + 1013904223; return ((rs >> 8) & 0xFFFF) / 32768f - 1f; }
 
@@ -88,7 +96,7 @@ namespace TerminalHell
                 }
             }
 
-            tracks = new Track[5];
+            tracks = new Track[7];
             // 0: title - slow and ominous
             tracks[0] = new Track
             {
@@ -129,6 +137,26 @@ namespace TerminalHell
                 Drums = new[] { "K.......S.......", "K.......S...H...", "K.......S.......", "K...K...S...S.S." },
                 Order = new[] { 0, 0, 1, 0, 2, 0, 3, 0 },
             };
+            // 5: the airport before anything goes wrong - soft pads, a slow bass and a glockenspiel, no drums
+            tracks[5] = new Track
+            {
+                Bpm = 84, Root = 36, Drive = 1, PadVol = 0.2f, BassVol = 0.11f, Fifth = false, LeadVol = 0.15f,
+                Chord = new[] { 0, 7, 12, 14 },
+                Bass = new[] { "0-------7-------", "0-------7-------", "0-------7-------", "0-------7-------" },
+                Drums = new[] { "................", "................", "................", "................" },
+                Lead = new[] { "c.......9...7...", "9...c...e.......", "c...9...7...9...", "7...9...c...e..." },
+                Order = new[] { 0, 0, 1, 9, 2, 5, 3, 7 },
+            };
+            // 6: the airport once it has been reached - a low heartbeat, a diminished pad, bells a semitone apart
+            tracks[6] = new Track
+            {
+                Bpm = 104, Root = 38, Drive = 5, PadVol = 0.15f, BassVol = 0.2f, LeadVol = 0.1f,
+                Chord = new[] { 0, 3, 6 },
+                Bass = new[] { "0...0...1.......", "0...0.0.1...6...", "0.0.0.0.5...6...", "0.......1.......", },
+                Drums = new[] { "K...........S...", "K.......K...S...", "K.....K.K...S.S.", "K...........S..C" },
+                Lead = new[] { "................", "....c...........", "................", "..........d.e..." },
+                Order = new[] { 0, 0, 1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 3, 0, 3, -1 },
+            };
         }
 
         public static void Play(int track)
@@ -137,6 +165,44 @@ namespace TerminalHell
         }
 
         public static void Stop() { current = -1; }
+
+        /// <summary>The track that has been asked for (-1 for silence).</summary>
+        public static int Current { get { return current; } }
+
+        /// <summary>Developer aid: renders a track offline and reports its level, so a bad mix or a NaN is caught without listening.</summary>
+        public static string Measure(int track, float seconds, string wavPath)
+        {
+            Init();
+            Play(track);
+            int frames = 1024, total = (int)(seconds * R);
+            var l = new float[frames]; var r = new float[frames];
+            var pcm = new System.Collections.Generic.List<short>();
+            double sum = 0; float peak = 0; int bad = 0; long n = 0;
+            for (int done = 0; done < total; done += frames)
+            {
+                Array.Clear(l, 0, frames); Array.Clear(r, 0, frames);
+                Render(l, r, frames, 1f);
+                for (int i = 0; i < frames; i++)
+                {
+                    float v = (l[i] + r[i]) * 0.5f;
+                    if (float.IsNaN(v) || float.IsInfinity(v)) { bad++; v = 0; }
+                    sum += v * v; peak = Math.Max(peak, Math.Abs(v)); n++;
+                    pcm.Add((short)(Math.Max(-1, Math.Min(1, v)) * 32000));
+                }
+            }
+            if (wavPath != null)
+            {
+                using (var fs = new System.IO.FileStream(wavPath, System.IO.FileMode.Create))
+                using (var bw = new System.IO.BinaryWriter(fs))
+                {
+                    bw.Write(new[] { 'R', 'I', 'F', 'F' }); bw.Write(36 + pcm.Count * 2); bw.Write(new[] { 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ' });
+                    bw.Write(16); bw.Write((short)1); bw.Write((short)1); bw.Write(R); bw.Write(R * 2); bw.Write((short)2); bw.Write((short)16);
+                    bw.Write(new[] { 'd', 'a', 't', 'a' }); bw.Write(pcm.Count * 2);
+                    foreach (short s in pcm) bw.Write(s);
+                }
+            }
+            return "track " + track + ": rms " + Math.Sqrt(sum / Math.Max(1, n)).ToString("0.000") + ", peak " + peak.ToString("0.000") + ", bad samples " + bad;
+        }
 
         static int Note(char c)
         {
@@ -167,6 +233,7 @@ namespace TerminalHell
                 {
                     playing = want; fade = 1; sample = 0; step = -1; orderPos = 0;
                     bEnv = 0; padRoot = padTarget = -1;
+                    for (int v = 0; v < LeadVoices; v++) leadFreq[v] = 0;
                     for (int i = 0; i < dData.Length; i++) dData[i] = null;
                 }
             }
@@ -201,6 +268,17 @@ namespace TerminalHell
                     if (dc == 'S' || dc == 'Y') Trigger(snare, -0.1f);
                     if (dc == 'H' || dc == 'X' || dc == 'Y') Trigger(hat, 0.35f);
                     if (dc == 'C') { Trigger(crash, -0.3f); Trigger(kick, 0); }
+                    if (tr.Lead != null)
+                    {
+                        char lc = tr.Lead[pat][st];
+                        if (lc != '.' && lc != '-')
+                        {
+                            int v = leadNext; leadNext = (leadNext + 1) % LeadVoices;
+                            leadFreq[v] = Midi(tr.Root + 24 + Note(lc));
+                            leadAge[v] = 0;
+                            leadPh1[v] = leadPh2[v] = leadPh3[v] = 0;
+                        }
+                    }
                     if (st == 0) padTarget = tr.Root + trans + 12;
                 }
 
@@ -224,14 +302,31 @@ namespace TerminalHell
                     if (padRoot < 0) padRoot = padTarget;
                     padRoot += (padTarget - padRoot) * 0.0005f;
                     float lfo = 0.6f + 0.4f * (float)Math.Sin(sample * 2 * Math.PI * 0.15 / R);
-                    for (int k = 0; k < 3; k++)
+                    var chord = tr.Chord ?? PadIntervals;
+                    for (int k = 0; k < chord.Length; k++)
                     {
-                        double f = Midi(padRoot + PadIntervals[k]);
-                        pph[k] += f / R; pph[k + 3] += f * 1.004 / R;
-                        pad += (float)(Math.Sin(pph[k] * 2 * Math.PI) + Math.Sin(pph[k + 3] * 2 * Math.PI) * 0.8);
+                        double f = Midi(padRoot + chord[k]);
+                        pph[k] += f / R; pph[k + 8] += f * 1.004 / R;
+                        pad += (float)(Math.Sin(pph[k] * 2 * Math.PI) + Math.Sin(pph[k + 8] * 2 * Math.PI) * 0.8);
                     }
-                    pad *= tr.PadVol * 0.25f * lfo;
+                    pad *= tr.PadVol * (chord.Length == 3 ? 0.25f : 0.19f) * lfo;
                 }
+
+                // the melody: a soft bell (a fundamental and two inharmonic partials that die away faster)
+                float lead = 0;
+                if (tr.Lead != null)
+                    for (int v = 0; v < LeadVoices; v++)
+                    {
+                        if (leadFreq[v] <= 0 || leadAge[v] > 2.5f) continue;
+                        float age = leadAge[v];
+                        leadAge[v] += 1f / R;
+                        leadPh1[v] += leadFreq[v] / R; leadPh2[v] += leadFreq[v] * 2.76 / R; leadPh3[v] += leadFreq[v] * 5.4 / R;
+                        float att = Math.Min(1, age / 0.004f);
+                        lead += att * ((float)Math.Sin(leadPh1[v] * 2 * Math.PI) * (float)Math.Exp(-age / 1.0)
+                                     + (float)Math.Sin(leadPh2[v] * 2 * Math.PI) * 0.28f * (float)Math.Exp(-age / 0.35)
+                                     + (float)Math.Sin(leadPh3[v] * 2 * Math.PI) * 0.1f * (float)Math.Exp(-age / 0.15));
+                    }
+                lead *= tr.LeadVol;
 
                 float dl2 = 0, dr2 = 0;
                 for (int k = 0; k < dData.Length; k++)
@@ -243,8 +338,8 @@ namespace TerminalHell
                     if (dPos[k] >= d.Length) dData[k] = null;
                 }
 
-                L[i] += (bass + pad + dl2) * vol;
-                Rr[i] += (bass + pad * 0.9f + dr2) * vol;
+                L[i] += (bass + pad + lead * 0.9f + dl2) * vol;
+                Rr[i] += (bass + pad * 0.9f + lead + dr2) * vol;
             }
         }
     }

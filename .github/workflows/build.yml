@@ -32,11 +32,31 @@ jobs:
           .\bin\TerminalHell.exe --dev-save
           if ($LASTEXITCODE -ne 0) { throw "save test failed" }
 
+      - name: Airport test (unarmed start, boarding gate, the incident, key carrier, old saves)
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-terminal
+          if ($LASTEXITCODE -ne 0) { throw "airport test failed" }
+
       - name: Parry and jump test
         shell: powershell
         run: |
           .\bin\TerminalHell.exe --dev-moves
           if ($LASTEXITCODE -ne 0) { throw "parry / jump test failed" }
+
+      - name: Exit door and one-way seal door test
+        shell: powershell
+        run: |
+          .\bin\TerminalHell.exe --dev-exit
+          if ($LASTEXITCODE -ne 0) { throw "exit door test failed" }
+          .\bin\TerminalHell.exe --dev-seal
+          if ($LASTEXITCODE -ne 0) { throw "seal door test failed" }
+          .\bin\TerminalHell.exe --dev-secret2
+          if ($LASTEXITCODE -ne 0) { throw "check-in secret test failed" }
+          .\bin\TerminalHell.exe --dev-talk
+          if ($LASTEXITCODE -ne 0) { throw "npc chatter test failed" }
+          .\bin\TerminalHell.exe --dev-automap-aim
+          if ($LASTEXITCODE -ne 0) { throw "automap aim test failed" }
 
       - name: Soak test (random bot plays every level)
         shell: powershell

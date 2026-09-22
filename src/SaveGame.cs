@@ -57,11 +57,13 @@ namespace TerminalHell
                 if (!File.Exists(Path)) return null;
                 var h = new SaveHeader();
                 bool magic = false;
+                int byId = -1, legacy = -1;
                 foreach (var line in File.ReadAllLines(Path))
                 {
                     var f = line.Split(' ');
                     if (f[0] == Magic) { magic = true; continue; }
-                    if (f[0] == "level") h.Level = Int(f, 1);
+                    if (f[0] == "levelid") byId = Levels.IndexOf(f.Length > 1 ? f[1] : "");
+                    else if (f[0] == "level") legacy = Int(f, 1);
                     else if (f[0] == "totals")
                     {
                         h.TotalKills = Int(f, 1); h.TotalKillsMax = Int(f, 2);
@@ -72,7 +74,9 @@ namespace TerminalHell
                     else if (f[0] == "when") h.When = line.Substring(5);
                     else if (f[0] == "player") break;
                 }
-                return magic ? h : null;
+                // saves from before there were two episodes only had a number, and those levels are now the hell episode
+                h.Level = byId >= 0 ? byId : legacy >= 0 ? Levels.FirstOf(1) + legacy : -1;
+                return magic && h.Level >= 0 ? h : null;
             }
             catch { return null; }
         }
@@ -86,7 +90,7 @@ namespace TerminalHell
                 var sb = new StringBuilder();
                 sb.AppendLine(Magic);
                 sb.AppendLine("when " + DateTime.Now.ToString("dd MMM HH:mm", Inv).ToUpperInvariant());
-                sb.AppendLine("level " + h.Level);
+                sb.AppendLine("levelid " + w.Def.Id);
                 sb.AppendLine(string.Join(" ", new[] { "totals", S(h.TotalKills), S(h.TotalKillsMax), S(h.TotalSecrets), S(h.TotalSecretsMax),
                     S(h.TotalScore), F(h.TotalTime), S(h.Difficulty) }));
                 sb.AppendLine(string.Join(" ", new[] { "world", S(w.Score), S(w.Kills), S(w.TotalKills), S(w.ItemsTaken), S(w.TotalItems),
@@ -101,8 +105,9 @@ namespace TerminalHell
                 for (int i = 0; i < Player.Weapons; i++) has.Add(p.Has[i] ? "1" : "0");
                 sb.AppendLine(string.Join(" ", has.ToArray()));
                 var keys = new List<string>(); keys.Add("keys");
-                for (int i = 0; i < 4; i++) keys.Add(p.Keys[i] ? "1" : "0");
+                for (int i = 0; i < p.Keys.Length; i++) keys.Add(p.Keys[i] ? "1" : "0");
                 sb.AppendLine(string.Join(" ", keys.ToArray()));
+                sb.AppendLine("incident " + w.Incident);
 
                 for (int i = 0; i < w.Map.Doors.Count; i++)
                 {
@@ -122,7 +127,8 @@ namespace TerminalHell
                     var m = a as Monster;
                     if (m != null)
                     {
-                        sb.AppendLine(string.Join(" ", new[] { "monster", m.Def.Code.ToString(), F(m.X), F(m.Y), F(m.Angle), F(m.Health), S((int)m.State) }));
+                        sb.AppendLine(string.Join(" ", new[] { "monster", m.Def.Code.ToString(), F(m.X), F(m.Y), F(m.Angle), F(m.Health), S((int)m.State),
+                            m.Carries == '\0' ? "0" : m.Carries.ToString() }));
                         continue;
                     }
                     var it = a as Item;
@@ -181,7 +187,10 @@ namespace TerminalHell
                             for (int i = 0; i < Player.Weapons && i + 1 < f.Length; i++) p.Has[i] = Int(f, i + 1) != 0;
                             break;
                         case "keys":
-                            for (int i = 0; i < 4 && i + 1 < f.Length; i++) p.Keys[i] = Int(f, i + 1) != 0;
+                            for (int i = 0; i < p.Keys.Length && i + 1 < f.Length; i++) p.Keys[i] = Int(f, i + 1) != 0;
+                            break;
+                        case "incident":
+                            w.Incident = Int(f, 1) != 0 ? 2 : 0;      // one that was still going on counts as over
                             break;
                         case "door":
                             {
@@ -204,6 +213,7 @@ namespace TerminalHell
                                 m.Angle = Flt(f, 4);
                                 m.Health = Flt(f, 5);
                                 m.State = (MState)Int(f, 6);
+                                if (f.Length > 7 && f[7] != "0" && f[7].Length > 0) m.Carries = f[7][0];
                                 if (!m.Alive) { m.Solid = false; m.Shootable = false; m.State = MState.Dead; }
                                 if (def.Boss && m.Alive && m.Health < def.Health) w.BossAwake = m;
                                 w.Actors.Add(m);

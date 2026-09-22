@@ -5,18 +5,22 @@ using System.Collections.Generic;
 namespace TerminalHell
 {
     enum CellKind : byte { Empty = 0, Wall = 1, Door = 2, Push = 3 }
-    enum FloorKind : byte { A = 0, B = 1, Outdoor = 2, Lava = 3, LavaOut = 4, Nukage = 5, NukageOut = 6, Bridge = 7, BridgeOut = 8 }
+    enum FloorKind : byte { A = 0, B = 1, Outdoor = 2, Lava = 3, LavaOut = 4, Nukage = 5, NukageOut = 6, Bridge = 7, BridgeOut = 8, C = 9 }
     enum DoorState { Closed, Opening, Open, Closing }
 
     sealed class Door
     {
         public int X, Y;
-        public int Key;          // 0 none, 1 red, 2 blue, 3 yellow
+        public int Key;          // 0 none, 1 red, 2 blue, 3 yellow, 4 boarding pass
         public bool Horizontal;  // true: the door plane runs along X (walls east & west), at y + 0.5
         public float Open;       // 0 closed .. 1 open
         public DoorState State;
         public float Timer;
         public int Texture;
+        public bool IsExit;         // the level's exit: opening it starts the level-end sequence
+        public bool SealBehind;     // once opened and closed again with the player past it, it locks forever
+        public bool SealPositive;   // which side of the doorway counts as "past it" (see World.PastSeal)
+        public bool HasOpened, Sealed;
     }
 
     sealed class PushWall
@@ -32,17 +36,29 @@ namespace TerminalHell
 
     struct Spawn { public char C; public int X, Y; }
 
+    /// <summary>A run of levels: its name in the menu and the words on the screen after its last level.</summary>
+    sealed class EpisodeDef
+    {
+        public string Name, Blurb, EndTitle;
+        public string[] Ending;
+    }
+
     sealed class LevelDef
     {
         public string Id, Name, Intro;
         public string[] Map;
+        public int Episode;                 // index into Levels.Episodes (set by Levels.All)
         public int FloorA = Tex.F_TILE, CeilA = Tex.C_PANEL, FloorB = Tex.F_METAL, CeilB = Tex.C_STONE, FloorOut = Tex.F_DIRT;
-        public bool NightSky;
+        public int FloorC = Tex.F_METAL, CeilC = Tex.C_PANEL;   // a third indoor look ('-' on the map): the safety room
+        public int Sky;                     // 0 red hell sky, 1 night, 2 blue earth sky
         public int Ambient = Col.Rgb(60, 58, 62);
         public int SkyLight = Col.Rgb(190, 150, 130);
         public int FogColor = 0;
         public float FogDensity = 0.09f;
         public int Music;
+        public int MusicAfter = -1;         // music once the level's incident has happened (the airport)
+        public bool Unarmed;                // the run starts with bare fists and nothing else
+        public bool Chime;                  // calm airport announcements until the incident
         public string Par = "";
     }
 
@@ -93,7 +109,16 @@ namespace TerminalHell
                 case '8': return Tex.RUST;
                 case '9': return Tex.SKULLS;
                 case '0': return Tex.ROCK;
-                case 'X': return Tex.EXIT_OFF;
+                case 'A': return Tex.TERM;
+                case 'F': return Tex.GLASS;
+                case 'H': return Tex.BOARD;
+                case 'I': return Tex.SCORCH;
+                case 'J': return Tex.SHATTER;
+                case 'M': return Tex.DEADBOARD;
+                case 'O': return Tex.SAFE;
+                case 'P': return Tex.SAFECROSS;
+                case 'V': return Tex.CONCRETE;
+                case 'Z': return Tex.HANGAR;
             }
             return 0;
         }
@@ -104,6 +129,7 @@ namespace TerminalHell
             {
                 case '.': return (int)FloorKind.A;
                 case '_': return (int)FloorKind.B;
+                case '-': return (int)FloorKind.C;
                 case ',': return (int)FloorKind.Outdoor;
                 case '~': return (int)FloorKind.Lava;
                 case ':': return (int)FloorKind.LavaOut;
@@ -151,12 +177,15 @@ namespace TerminalHell
                         m.WallTex[i] = (byte)wt;
                         m.WallHeight[i] = TileHeight(wt);
                     }
-                    else if (c == 'D' || c == 'R' || c == 'B' || c == 'Y')
+                    else if (c == 'D' || c == 'R' || c == 'B' || c == 'Y' || c == '}' || c == 'X')
                     {
                         var d = new Door();
                         d.X = x; d.Y = y;
-                        d.Key = c == 'R' ? 1 : c == 'B' ? 2 : c == 'Y' ? 3 : 0;
-                        d.Texture = d.Key == 1 ? Tex.DOOR_RED : d.Key == 2 ? Tex.DOOR_BLUE : d.Key == 3 ? Tex.DOOR_YELLOW : Tex.DOOR;
+                        d.Key = c == 'R' ? 1 : c == 'B' ? 2 : c == 'Y' ? 3 : c == '}' ? 4 : 0;
+                        d.IsExit = c == 'X';
+                        // the boarding gate seals shut behind you once you've walked through it
+                        if (c == '}') { d.SealBehind = true; d.SealPositive = false; }
+                        d.Texture = d.Key == 1 ? Tex.DOOR_RED : d.Key == 2 ? Tex.DOOR_BLUE : d.Key == 3 ? Tex.DOOR_YELLOW : d.Key == 4 ? Tex.DOOR_PASS : d.IsExit ? Tex.DOOR_EXIT : Tex.DOOR;
                         m.Kind[i] = CellKind.Door;
                         m.DoorIdx[i] = (short)m.Doors.Count;
                         m.WallHeight[i] = 1;
@@ -189,7 +218,7 @@ namespace TerminalHell
                 {
                     int i = s.Y * m.W + s.X;
                     if (floorKnown[i]) continue;
-                    var count = new int[7];
+                    var count = new int[12];
                     int best = -1, bestN = 0;
                     for (int k = 0; k < 8; k++)
                     {
@@ -216,13 +245,14 @@ namespace TerminalHell
                 // a door's floor follows its neighbours
                 int i = d.Y * m.W + d.X;
                 int a = d.Horizontal ? (d.Y - 1) * m.W + d.X : d.Y * m.W + d.X - 1;
+                if (a < 0 || a >= m.Floor.Length) a = i;   // the door sits on the map's own edge: nothing on that side
                 m.Floor[i] = m.Floor[a] == FloorKind.Outdoor ? FloorKind.Outdoor : FloorKind.A;
 
                 // a lit panel on the wall either side of the door, so doorways are easy to find
                 m.LightPanel(d.Horizontal ? d.X - 1 : d.X, d.Horizontal ? d.Y : d.Y - 1);
                 m.LightPanel(d.Horizontal ? d.X + 1 : d.X, d.Horizontal ? d.Y : d.Y + 1);
                 // and light spilling into the rooms on both sides, in the colour of the key a locked door wants
-                int lit = d.Key == 1 ? Col.Rgb(255, 90, 60) : d.Key == 2 ? Col.Rgb(100, 150, 255) : d.Key == 3 ? Col.Rgb(255, 210, 90) : Col.Rgb(255, 226, 180);
+                int lit = d.Key == 1 ? Col.Rgb(255, 90, 60) : d.Key == 2 ? Col.Rgb(100, 150, 255) : d.Key == 3 ? Col.Rgb(255, 210, 90) : d.Key == 4 ? Col.Rgb(90, 230, 210) : Col.Rgb(255, 226, 180);
                 int ax = d.Horizontal ? 0 : 1, ay = d.Horizontal ? 1 : 0;   // the way you walk through it
                 for (int s = -1; s <= 1; s += 2)
                 {

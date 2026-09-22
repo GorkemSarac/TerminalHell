@@ -25,9 +25,11 @@ namespace TerminalHell
         public int Difficulty = 1;          // 0 easy, 1 normal, 2 hard
         public bool PixelDouble;            // render at half resolution (faster terminals)
         public bool BigPickupText = true;   // pickup messages in the game's pixel font instead of a plain text line
-        public int BestScore;               // best finished run: shown on the title screen
-        public float BestTime;              // fastest finished run (tracked separately from the best score)
-        public bool Beaten;                 // the episode has been finished at least once
+        public const int Episodes = 2;
+        // records, one set per episode (0 earth, 1 hell): the best score and the fastest run are tracked separately
+        public readonly int[] BestScores = new int[Episodes];
+        public readonly float[] BestTimes = new float[Episodes];
+        public readonly bool[] Beaten = new bool[Episodes];     // the episode has been finished at least once
         public bool UpdateCheck = true;     // ask GitHub whether a newer version has been published
 
         public static string Dir
@@ -65,9 +67,13 @@ namespace TerminalHell
                         case "difficulty": s.Difficulty = Clamp(Int(v, 1), 0, 2); break;
                         case "pixeldouble": s.PixelDouble = Bool(v, false); break;
                         case "bigpickuptext": s.BigPickupText = Bool(v, true); break;
-                        case "bestscore": s.BestScore = Math.Max(0, Int(v, 0)); break;
-                        case "besttime": s.BestTime = Math.Max(0, Float(v, 0)); break;
-                        case "beaten": s.Beaten = Bool(v, false); break;
+                        // the keys without a number are from before there were two episodes: those runs were in hell
+                        case "bestscore": case "bestscore1": s.BestScores[1] = Math.Max(0, Int(v, 0)); break;
+                        case "besttime": case "besttime1": s.BestTimes[1] = Math.Max(0, Float(v, 0)); break;
+                        case "beaten": case "beaten1": s.Beaten[1] = Bool(v, false); break;
+                        case "bestscore0": s.BestScores[0] = Math.Max(0, Int(v, 0)); break;
+                        case "besttime0": s.BestTimes[0] = Math.Max(0, Float(v, 0)); break;
+                        case "beaten0": s.Beaten[0] = Bool(v, false); break;
                         case "updatecheck": s.UpdateCheck = Bool(v, true); break;
                     }
                 }
@@ -98,9 +104,12 @@ namespace TerminalHell
                 sb.AppendLine("difficulty=" + Difficulty);
                 sb.AppendLine("pixeldouble=" + PixelDouble);
                 sb.AppendLine("bigpickuptext=" + BigPickupText);
-                sb.AppendLine("bestscore=" + BestScore);
-                sb.AppendLine("besttime=" + BestTime.ToString("0.0", CultureInfo.InvariantCulture));
-                sb.AppendLine("beaten=" + Beaten);
+                for (int e = 0; e < Episodes; e++)
+                {
+                    sb.AppendLine("bestscore" + e + "=" + BestScores[e]);
+                    sb.AppendLine("besttime" + e + "=" + BestTimes[e].ToString("0.0", CultureInfo.InvariantCulture));
+                    sb.AppendLine("beaten" + e + "=" + Beaten[e]);
+                }
                 sb.AppendLine("updatecheck=" + UpdateCheck);
                 File.WriteAllText(FilePath, sb.ToString());
             }
@@ -111,20 +120,14 @@ namespace TerminalHell
         /// not preferences, so they are left alone (SAVE RESET clears those).</summary>
         public void ResetToDefaults()
         {
-            var d = new Settings();
-            d.BestScore = BestScore;
-            d.BestTime = BestTime;
-            d.Beaten = Beaten;
-            Copy(d);
+            Copy(new Settings());
             Save();
         }
 
         /// <summary>Wipes the records: the best score, the fastest run, and having finished the episode.</summary>
         public void ClearProgress()
         {
-            BestScore = 0;
-            BestTime = 0;
-            Beaten = false;
+            for (int e = 0; e < Episodes; e++) { BestScores[e] = 0; BestTimes[e] = 0; Beaten[e] = false; }
             Save();
         }
 
@@ -135,7 +138,7 @@ namespace TerminalHell
             Crosshair = s.Crosshair; HeadBob = s.HeadBob; Fov = s.Fov;
             SfxVolume = s.SfxVolume; MusicVolume = s.MusicVolume; ShowFps = s.ShowFps;
             Difficulty = s.Difficulty; PixelDouble = s.PixelDouble; BigPickupText = s.BigPickupText;
-            BestScore = s.BestScore; BestTime = s.BestTime; Beaten = s.Beaten; UpdateCheck = s.UpdateCheck;
+            UpdateCheck = s.UpdateCheck;
         }
 
         static int Int(string v, int def) { int r; return int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out r) ? r : def; }

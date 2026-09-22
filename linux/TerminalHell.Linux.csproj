@@ -11,7 +11,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>terminalhell</AssemblyName>
     <RootNamespace>TerminalHell</RootNamespace>
-    <Version>1.4.0</Version>   <!-- the game's own version lives in src/Program.cs; keep these the same -->
+    <Version>1.7.0</Version>   <!-- the game's own version lives in src/Program.cs; keep these the same -->
 
     <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

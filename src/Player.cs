@@ -46,7 +46,7 @@ namespace TerminalHell
         public static readonly int[] MaxAmmo = { 200, 50, 50, 12 };
         public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT", "SOUL" };
         public readonly bool[] Has = new bool[Weapons];
-        public readonly bool[] Keys = new bool[4];
+        public readonly bool[] Keys = new bool[5];      // 1 red, 2 blue, 3 yellow, 4 boarding pass
         public int Weapon = 1, Pending = -1, LastWeapon = 0;
         public bool Dead;
         public float DeadTime;
@@ -91,6 +91,14 @@ namespace TerminalHell
             for (int i = 0; i < AmmoTypes; i++) Ammo[i] = 0;
             Ammo[0] = 50;
             Weapon = 1; Pending = -1;
+        }
+
+        /// <summary>Bare fists and nothing else: how the airport starts.</summary>
+        public void MakeUnarmed()
+        {
+            for (int i = 0; i < Weapons; i++) Has[i] = i == 0;
+            for (int i = 0; i < AmmoTypes; i++) Ammo[i] = 0;
+            Weapon = 0; Pending = -1;
         }
 
         public Player CloneInventory()
@@ -366,6 +374,7 @@ namespace TerminalHell
                 case 'E': if (!AddAmmo(1, (int)(20 * am))) return false; w.Message("PICKED UP A BOX OF SHELLS.", -1); break;
                 case 'q': if (!AddAmmo(2, (int)(1 * am + 0.5f))) return false; w.Message("PICKED UP A ROCKET.", -1); break;
                 case 'Q': if (!AddAmmo(2, (int)(5 * am))) return false; w.Message("PICKED UP A BOX OF ROCKETS.", -1); break;
+                case 'g': GiveWeapon(w, 1, 0, 20, "YOU GOT THE PISTOL!"); break;
                 case 'S': GiveWeapon(w, 2, 1, 8, "YOU GOT THE SHOTGUN!"); break;
                 case 'N': GiveWeapon(w, 3, 0, 20, "YOU GOT THE MINIGUN!"); break;
                 case 'L': GiveWeapon(w, 4, 2, 2, "YOU GOT THE ROCKET LAUNCHER!"); break;
@@ -374,9 +383,15 @@ namespace TerminalHell
                 case 'r': Keys[1] = true; w.Message("PICKED UP A RED KEYCARD.", Col.Rgb(255, 80, 60)); Audio.Play(Sfx.KeyPickup); break;
                 case 'b': Keys[2] = true; w.Message("PICKED UP A BLUE KEYCARD.", Col.Rgb(90, 150, 255)); Audio.Play(Sfx.KeyPickup); break;
                 case 'y': Keys[3] = true; w.Message("PICKED UP A YELLOW KEYCARD.", Col.Rgb(255, 220, 60)); Audio.Play(Sfx.KeyPickup); break;
+                case '{':
+                    Keys[4] = true;
+                    w.Message("YOU HAVE YOUR BOARDING PASS.", Col.Rgb(90, 230, 210));
+                    Audio.Play(Sfx.KeyPickup);
+                    w.TriggerIncident();
+                    break;
                 default: return false;
             }
-            if ("orbySNLW".IndexOf(c) < 0) Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
+            if ("orbySNLWg{".IndexOf(c) < 0) Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
             PickupFlash = Math.Min(1, PickupFlash + 0.5f);
             return true;
         }

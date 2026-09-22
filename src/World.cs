@@ -92,6 +92,62 @@ namespace TerminalHell
                 case '&': Add(new Decor(Art.Corpse, cx, cy, false, 0.3f)); return;
                 case 'x': Add(new Decor(Art.BloodPool, cx, cy, false, 0.3f)); return;
                 case 'k': Add(new Decor(Art.Skulls, cx, cy, false, 0.3f)); return;
+                // ---- the airport
+                case 'd': Add(new Decor(Art.Desk, cx, cy, true, 0.46f)); return;
+                case 'j': Add(new Decor(Art.SeatsEmpty, cx, cy, true, 0.44f)); return;
+                case 'l': Add(new Decor(Art.SeatsTaken, cx, cy, true, 0.44f)); return;
+                case '(': Add(new Decor(Art.SeatsWrecked, cx, cy, true, 0.4f)); return;
+                case ')': Add(new Decor(Art.Rubble, cx, cy, true, 0.42f)); return;
+                case 'n': Add(new Decor(Art.Plant, cx, cy, true, 0.22f)); return;
+                case 's': Add(new Decor(Art.Luggage[(x * 3 + y * 5) & 1], cx, cy, false, 0.25f)); return;
+                case 'u':
+                    {
+                        var t = new Decor(Art.Travelers[(x * 3 + y * 5) & 3], cx, cy, true, 0.2f);
+                        t.Lines = TravelerLines;
+                        Add(t);
+                        return;
+                    }
+                case '@': Add(new Decor(Art.DeadTravelers[(x + y * 2) % 3], cx, cy, false, 0.3f)); return;
+                case '/': Add(new Decor(Art.Bin, cx, cy, true, 0.16f)); return;
+                case 'T': Add(new Decor(Art.Cart, cx, cy, true, 0.4f)); return;
+                case '?':
+                    {
+                        var d = new Decor(Art.Vending, cx, cy, true, 0.3f);
+                        d.Glows = true;
+                        Add(d);
+                        Map.AddLight(cx, cy, 3.6f, 0.7f, Col.Rgb(200, 226, 255));
+                        return;
+                    }
+                case 'f':
+                    {
+                        var d = new Decor(Art.Fire[0], cx, cy, true, 0.32f);
+                        d.Anim = Art.Fire;
+                        d.Glows = true;
+                        Add(d);
+                        Map.AddLight(cx, cy, 6.2f, 1.15f, Col.Rgb(255, 130, 46));
+                        return;
+                    }
+                case '[': Add(new Marquee(cx, cy)); return;
+                case ']':
+                    {
+                        var d = new Decor(Art.HellSign, cx, cy, false, 0.2f);
+                        d.Scale = 1f / 44;
+                        d.Z = 0.36f;
+                        d.Glows = true;
+                        Add(d);
+                        Map.AddLight(cx, cy, 5.5f, 0.6f, Col.Rgb(255, 60, 40));
+                        return;
+                    }
+                case '`':
+                    {
+                        // an evil soldier with something in his pocket
+                        var m = new Monster(MonsterDef.Ghoul, cx, cy);
+                        m.Angle = (float)(Rng.NextDouble() * Math.PI * 2);
+                        m.Carries = 'r';
+                        Add(m);
+                        TotalKills++;
+                        return;
+                    }
             }
             var md = MonsterDef.For(c);
             if (md != null)
@@ -112,6 +168,22 @@ namespace TerminalHell
             throw new InvalidOperationException("Unknown map character '" + c + "' at " + x + "," + y + " in " + Def.Id);
         }
 
+        static readonly string[] TravelerLines =
+        {
+            "HAVE YOU SEEN GATE 14 ANYWHERE?",
+            "MY FLIGHT'S DELAYED. AGAIN.",
+            "IS THIS THE LINE FOR SECURITY?",
+            "COFFEE HERE IS OVERPRICED, BUT WHATEVER.",
+            "I HATE FLYING.",
+            "DO THEY SERVE FOOD ON THIS AIRLINE?",
+            "MY LUGGAGE BETTER NOT BE LOST THIS TIME.",
+            "CAN'T WAIT TO GET HOME.",
+            "EXCUSE ME, WHERE ARE THE RESTROOMS?",
+            "THIS AIRPORT IS HUGE.",
+            "DID YOU FEEL THAT? PROBABLY NOTHING.",
+            "THEY CANCELLED THE FREE WIFI. UNBELIEVABLE.",
+        };
+
         public const float PedestalScale = 1f / 52;
 
         /// <summary>How high a weapon sits when it is displayed on a pedestal.</summary>
@@ -120,7 +192,7 @@ namespace TerminalHell
         /// <summary>Weapons left in the level stand on a lit pedestal; ones dropped by the dead lie where they fall.</summary>
         public static bool OnPedestal(char c, bool dropped)
         {
-            return !dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W');
+            return !dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W' || c == 'g');
         }
 
         public void SpawnItem(char c, float x, float y, bool dropped)
@@ -177,6 +249,8 @@ namespace TerminalHell
 
             UpdateDoors(dt);
             UpdatePushWalls(dt);
+            UpdateSealDoors();
+            UpdateIncident(dt);
 
             for (int i = Messages.Count - 1; i >= 0; i--)
             {
@@ -267,6 +341,51 @@ namespace TerminalHell
             }
         }
 
+        /// <summary>True once the player has crossed to the far side of a one-way door, past the point of no return.</summary>
+        bool PastSeal(Door d)
+        {
+            float pos = d.Horizontal ? P.Y : P.X;
+            float dc = d.Horizontal ? d.Y : d.X;
+            return d.SealPositive ? pos > dc + 0.6f : pos < dc - 0.6f;
+        }
+
+        void UpdateSealDoors()
+        {
+            foreach (var d in Map.Doors)
+            {
+                if (!d.SealBehind || d.Sealed || !d.HasOpened || d.State != DoorState.Closed) continue;
+                if (!PastSeal(d)) continue;
+                d.Sealed = true;
+                Message("THE DOOR SEALS SHUT BEHIND YOU.", Col.Rgb(200, 210, 220));
+            }
+        }
+
+        /// <summary>The talkative decor actor straight ahead of the player, close enough to address.</summary>
+        Actor TalkTarget(Player p)
+        {
+            float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+            Actor best = null; float bestD = 1.6f;
+            foreach (var a in Actors)
+            {
+                var dec = a as Decor;
+                if (dec == null || dec.Lines == null || dec.Lines.Length == 0) continue;
+                float ox = a.X - p.X, oy = a.Y - p.Y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0 || t > bestD) continue;
+                float perp2 = ox * ox + oy * oy - t * t;
+                if (perp2 > 0.35f * 0.35f) continue;
+                bestD = t; best = a;
+            }
+            return best;
+        }
+
+        void Talk(Actor npc)
+        {
+            var lines = ((Decor)npc).Lines;
+            Message(lines[Rng.Next(lines.Length)], Col.Rgb(210, 222, 235));
+            Audio.Play(Sfx.MenuMove, 0.5f, 0, 1.15f, 0);
+        }
+
         // ------------------------------------------------------------ doors and push walls
 
         bool DoorOccupied(Door d)
@@ -284,12 +403,33 @@ namespace TerminalHell
 
         public void OpenDoor(Door d, bool byPlayer)
         {
+            if (d.IsExit)
+            {
+                if (d.State != DoorState.Closed || ExitTriggered) return;
+                d.State = DoorState.Opening;
+                d.HasOpened = true;
+                Audio.PlayAt(Sfx.DoorOpen, d.X + 0.5f, d.Y + 0.5f);
+                Audio.Play(Sfx.Switch, 0.9f, 0, 1, 0);
+                ExitTriggered = true;
+                exitTimer = 0.75f;   // long enough to see the exit door swing open before the level ends
+                return;
+            }
+            if (d.Sealed)
+            {
+                if (byPlayer)
+                {
+                    Message("IT WON'T BUDGE. SOMETHING SEALED IT SHUT.", Col.Rgb(255, 120, 90));
+                    Audio.Play(Sfx.NoWay, 0.8f, 0, 1, 0);
+                }
+                return;
+            }
             if (d.Key != 0 && !P.Keys[d.Key])
             {
                 if (byPlayer)
                 {
                     string[] names = { "", "RED", "BLUE", "YELLOW" };
-                    Message("YOU NEED A " + names[d.Key] + " KEYCARD TO OPEN THIS DOOR.", Col.Rgb(255, 90, 60));
+                    if (d.Key == 4) Message("YOU NEED YOUR BOARDING PASS TO GET THROUGH THIS GATE.", Col.Rgb(90, 230, 210));
+                    else Message("YOU NEED A " + names[d.Key] + " KEYCARD TO OPEN THIS DOOR.", Col.Rgb(255, 90, 60));
                     Audio.Play(Sfx.NoWay, 0.8f, 0, 1, 0);
                 }
                 return;
@@ -297,6 +437,7 @@ namespace TerminalHell
             if (d.State == DoorState.Closed || d.State == DoorState.Closing)
             {
                 d.State = DoorState.Opening;
+                d.HasOpened = true;
                 Audio.PlayAt(Sfx.DoorOpen, d.X + 0.5f, d.Y + 0.5f);
             }
             else if (d.State == DoorState.Open && byPlayer && !DoorOccupied(d))
@@ -413,6 +554,8 @@ namespace TerminalHell
 
         public void PlayerUse(Player p)
         {
+            var npc = TalkTarget(p);
+            if (npc != null) { Talk(npc); return; }
             int cx, cy;
             if (!UseTarget(out cx, out cy)) return;
             var k = Map.KindAt(cx, cy);
@@ -424,13 +567,57 @@ namespace TerminalHell
                 if (Math.Abs(dx) > Math.Abs(dy)) Push(pw, Math.Sign(dx), 0); else Push(pw, 0, Math.Sign(dy));
                 return;
             }
-            int i = cy * Map.W + cx;
-            if (k == CellKind.Wall && Map.WallTex[i] == Tex.EXIT_OFF && !ExitTriggered)
+        }
+
+        // ------------------------------------------------------------ the incident (levels with a calm start)
+
+        public int Incident;            // 0 calm, 1 it is happening, 2 it has happened
+        float incidentTime, chimeTimer = 14;
+
+        /// <summary>The music this level should have playing right now.</summary>
+        public int MusicNow() { return Incident != 0 && Def.MusicAfter >= 0 ? Def.MusicAfter : Def.Music; }
+
+        /// <summary>Something goes wrong far away: the calm music stops, the building shakes and something roars.</summary>
+        public void TriggerIncident()
+        {
+            if (Incident != 0) return;
+            Incident = 1;
+            incidentTime = 0;
+            Music.Stop();
+        }
+
+        void UpdateIncident(float dt)
+        {
+            if (Def.Chime && Incident == 0)
             {
-                Map.WallTex[i] = Tex.EXIT_ON;
-                Audio.Play(Sfx.Switch);
-                ExitTriggered = true;
-                exitTimer = 0.1f;   // the switch clunks down and the level is over
+                chimeTimer -= dt;
+                if (chimeTimer <= 0)
+                {
+                    chimeTimer = 38 + (float)Rng.NextDouble() * 22;
+                    Audio.Play(Sfx.Chime, 0.32f, 0, 1, 0);      // the public address system
+                }
+            }
+            if (Incident != 1) return;
+            float before = incidentTime;
+            incidentTime += dt;
+            if (before < 0.9f && incidentTime >= 0.9f)
+            {
+                Audio.Play(Sfx.Explode, 1f, 0, 0.5f, 0);
+                Shake(1.2f);
+                P.DamageFlash = Math.Max(P.DamageFlash, 0.15f);
+            }
+            if (before < 1.5f && incidentTime >= 1.5f) Audio.Play(Sfx.Explode, 0.7f, 0.4f, 0.4f, 0);
+            if (before < 2.4f && incidentTime >= 2.4f)
+            {
+                Audio.Play(Sfx.BossSight, 0.95f, 0, 0.6f, 0);
+                Audio.Play(Sfx.Growl, 0.7f, -0.3f, 0.5f, 0);
+                Shake(0.7f);
+                Message("THE FLOOR TREMBLES. SOMETHING SCREAMS BEYOND THE GATE.", Col.Rgb(255, 120, 90));
+            }
+            if (before < 4.2f && incidentTime >= 4.2f)
+            {
+                Incident = 2;
+                Music.Play(MusicNow());
             }
         }
 
@@ -438,25 +625,25 @@ namespace TerminalHell
         {
             Hint = null;
             if (P.Dead || ExitTriggered) return;
+            var npc = TalkTarget(P);
+            if (npc != null) { Hint = "[E] TALK"; HintColor = Col.Rgb(200, 220, 255); return; }
             int cx, cy;
             if (!UseTarget(out cx, out cy)) return;
             var k = Map.KindAt(cx, cy);
             if (k == CellKind.Door)
             {
                 var d = Map.DoorAt(cx, cy);
+                if (d.IsExit) { Hint = "[E] EXIT LEVEL"; HintColor = Col.Rgb(120, 255, 120); return; }
+                if (d.Sealed) { Hint = "SEALED SHUT"; HintColor = Col.Rgb(180, 90, 80); return; }
                 if (d.State == DoorState.Opening || d.State == DoorState.Open) return;
                 if (d.Key != 0 && !P.Keys[d.Key])
                 {
-                    string[] names = { "", "RED", "BLUE", "YELLOW" };
-                    int[] cols = { 0, Col.Rgb(255, 80, 60), Col.Rgb(90, 150, 255), Col.Rgb(255, 220, 60) };
-                    Hint = "LOCKED - NEEDS " + names[d.Key] + " KEYCARD";
+                    string[] names = { "", "RED KEYCARD", "BLUE KEYCARD", "YELLOW KEYCARD", "BOARDING PASS" };
+                    int[] cols = { 0, Col.Rgb(255, 80, 60), Col.Rgb(90, 150, 255), Col.Rgb(255, 220, 60), Col.Rgb(90, 230, 210) };
+                    Hint = "LOCKED - NEEDS " + names[d.Key];
                     HintColor = cols[d.Key];
                 }
                 else { Hint = "[E] OPEN DOOR"; HintColor = Col.Rgb(240, 230, 200); }
-            }
-            else if (k == CellKind.Wall && Map.In(cx, cy) && Map.WallTex[cy * Map.W + cx] == Tex.EXIT_OFF)
-            {
-                Hint = "[E] EXIT LEVEL"; HintColor = Col.Rgb(120, 255, 120);
             }
         }
 
@@ -804,7 +991,8 @@ namespace TerminalHell
         {
             switch (code)
             {
-                case 'S': case 'N': case 'L': case 'W': return 500;        // the weapons
+                case 'S': case 'N': case 'L': case 'W': case 'g': return 500;   // the weapons
+                case '{': return 100;                                      // your boarding pass
                 case 'w': return 60;                                       // soul cells (secret rooms only)
                 case 'r': case 'b': case 'y': return 200;                  // keycards
                 case 'o': case 'U': return 300;                            // soul orb, mega armor

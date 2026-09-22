@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace TerminalHell
 {
-    static class Art
+    static partial class Art
     {
         // monster frame indices
         public const int WALK1 = 0, WALK2 = 1, AIM = 2, FIRE = 3, PAIN = 4, DIE1 = 5, DIE2 = 6, DIE3 = 7, DEAD = 8, FRAMES = 9;
@@ -36,6 +36,7 @@ namespace TerminalHell
             BuildItems();
             BuildDecor();
             BuildEffects();
+            BuildAirport();
         }
 
         // ================================================================ helpers
@@ -590,6 +591,15 @@ namespace TerminalHell
                 c.Rect(22, 8.5f, 3, 3, Col.Rgb(40, 40, 44));
                 c.Rect(29, 3, 5, 4, Col.Rgb(90, 90, 96));
             }
+            else if (kind == 3)
+            {
+                // a pistol lying on its side
+                c.Tube(6, 2, 22, 4.4f, Col.Rgb(96, 100, 110), false);
+                c.Rect(24, 3, 5, 2, Col.Rgb(20, 20, 22));
+                c.Poly(new float[] { 7, 6, 15, 6, 13, 12, 8, 12 }, Col.Rgb(50, 46, 48), Col.Rgb(28, 26, 28));
+                c.Rect(15, 6.4f, 4, 1.4f, Col.Rgb(60, 62, 70));
+                c.Rect(9, 2.4f, 5, 0.8f, Col.Rgb(40, 40, 46));
+            }
             else
             {
                 c.Tube(2, 1.5f, 32, 6.5f, Col.Rgb(80, 96, 70), false);
@@ -778,6 +788,9 @@ namespace TerminalHell
             foreach (var kv in Items) l.Add(kv.Value);
             l.Add(Barrel); l.Add(Pillar); l.Add(TechLamp); l.Add(CeilLamp); l.AddRange(Torch); l.Add(Corpse); l.Add(BloodPool); l.Add(Skulls); l.Add(BarrelDead);
             l.AddRange(Fireball); l.AddRange(Rocket); l.AddRange(Explosion); l.AddRange(Puff); l.AddRange(Blood);
+            l.AddRange(Travelers); l.AddRange(DeadTravelers); l.AddRange(Luggage); l.AddRange(Fire);
+            l.Add(SeatsEmpty); l.Add(SeatsTaken); l.Add(SeatsWrecked); l.Add(Desk); l.Add(Plant); l.Add(Vending); l.Add(Bin); l.Add(Rubble); l.Add(Cart);
+            l.Add(HellSign); l.Add(Ticket); l.Add(MarqueeFrame(0));
             return l;
         }
     }

@@ -129,6 +129,13 @@ namespace TerminalHell
                 s.Put(xs[5] + 2, y + k - 1, has ? '\u2588' : ' ', has ? kc[k] : Gray, Panel);
                 s.Put(xs[5] + 3, y + k - 1, has ? '\u258C' : ' ', has ? kc[k] : Gray, Panel);
             }
+            // the boarding pass gets a small ticket of its own beside the keycards
+            if (p.Keys[4])
+            {
+                int teal = Col.Rgb(90, 230, 210);
+                s.Put(xs[5] + 4, y, '▗', teal, Panel);
+                s.Put(xs[5] + 4, y + 1, '▝', teal, Panel);
+            }
             Center(s, xs[5], widths[5], y + 3, "KEYS", Label, Panel);
 
             if (table)
@@ -162,6 +169,7 @@ namespace TerminalHell
             x = Seg(s, x, y, d.Name + " ", d.Ammo >= 0 ? p.Ammo[d.Ammo].ToString() : "--", Yellow);
             int[] kc = { 0, Col.Rgb(240, 50, 40), Col.Rgb(60, 120, 255), Col.Rgb(250, 210, 40) };
             for (int k = 1; k <= 3; k++) if (p.Keys[k]) { s.Put(x, y, '\u25A0', kc[k], Panel); x += 2; }
+            if (p.Keys[4]) { s.Put(x, y, (char)0x25A0, Col.Rgb(90, 230, 210), Panel); x += 2; }
             if (rows >= 3)
             {
                 // tiny one-line face
@@ -315,13 +323,13 @@ namespace TerminalHell
 
         // ------------------------------------------------------------ automap
 
-        public static void Automap(Screen s, World w, int viewH)
+        public static void Automap(Screen s, World w, int viewH, float zoom)
         {
             var m = w.Map;
             var p = w.P;
             int W = s.W;
             for (int i = 0; i < W * viewH; i++) s.Pix[i] = Col.Scale(s.Pix[i], 0.22f);
-            int sc = Math.Max(2, Math.Min(5, viewH / 20));
+            int sc = Math.Max(1, (int)(Math.Max(2, Math.Min(5, viewH / 20)) * zoom));
             float ox = W / 2f - p.X * sc, oy = viewH / 2f - p.Y * sc;
             for (int cy = 0; cy < m.H; cy++)
                 for (int cx = 0; cx < m.W; cx++)
@@ -342,12 +350,12 @@ namespace TerminalHell
                             if (m.In(nx, ny) && m.Kind[ny * m.W + nx] != CellKind.Wall && m.Kind[ny * m.W + nx] != CellKind.Push) edge = true;
                         }
                         if (!edge) continue;
-                        c = m.WallTex[i] == Tex.EXIT_OFF || m.WallTex[i] == Tex.EXIT_ON ? Col.Rgb(80, 255, 80) : Col.Rgb(190, 60, 40);
+                        c = Col.Rgb(190, 60, 40);
                     }
                     else if (k == CellKind.Door)
                     {
                         var d = m.Doors[m.DoorIdx[i]];
-                        c = d.Key == 1 ? Col.Rgb(255, 60, 40) : d.Key == 2 ? Col.Rgb(70, 130, 255) : d.Key == 3 ? Col.Rgb(255, 220, 50) : Col.Rgb(220, 200, 120);
+                        c = d.IsExit ? Col.Rgb(80, 255, 80) : d.Key == 1 ? Col.Rgb(255, 60, 40) : d.Key == 2 ? Col.Rgb(70, 130, 255) : d.Key == 3 ? Col.Rgb(255, 220, 50) : Col.Rgb(220, 200, 120);
                     }
                     else
                     {
