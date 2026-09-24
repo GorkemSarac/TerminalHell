@@ -406,11 +406,11 @@ namespace TerminalHell
         {
             var m = new Menu("OPTIONS");
             string[] modes = { "HD PIXELS", "ASCII", "16 COLORS" };
-            string[] res = { "LOW", "MEDIUM", "HIGH", "FULL SCREEN" };
+            string[] res = { "LOW", "MEDIUM", "HIGH", "FULL SCREEN" };   // LOW (0) is hidden for now
             m.AddValue("DISPLAY MODE", () => modes[(int)S.Display], d => { S.Display = S.Display == DisplayMode.HD ? DisplayMode.Ascii : DisplayMode.HD; });
             if (Term.IsClassicConsole)
             {
-                m.AddValue("RESOLUTION", () => res[S.Resolution], d => { S.Resolution = Math.Max(0, Math.Min(3, S.Resolution + d)); Term.ApplyVideo(S); });
+                m.AddValue("RESOLUTION", () => res[S.Resolution], d => { S.Resolution = Math.Max(1, Math.Min(3, S.Resolution + d)); Term.ApplyVideo(S); });
                 m.AddValue("FONT", () => S.CrispFont ? "CRISP" : "SMOOTH", d => { S.CrispFont = !S.CrispFont; Term.ApplyVideo(S); });
             }
             else
@@ -675,7 +675,7 @@ namespace TerminalHell
             }
             inp.Use = Input.Hit('E');
             inp.Jump = Input.Hit(Input.VK_SPACE);
-            inp.Parry = Input.RHit;
+            inp.Parry = false;   // parrying is switched off for now (Input.RHit); the code stays
             for (int i = 0; i < Player.Slots; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
             if (Input.Wheel != 0)
             {

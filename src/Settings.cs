@@ -53,7 +53,7 @@ namespace TerminalHell
                     switch (k)
                     {
                         case "display": s.Display = (DisplayMode)Clamp(Int(v, 0), 0, 2); break;
-                        case "resolution": s.Resolution = Clamp(Int(v, 1), 0, 3); break;
+                        case "resolution": s.Resolution = Clamp(Int(v, 1), 1, 3); break;
                         case "crispfont": s.CrispFont = Bool(v, true); break;
                         case "mousesens": s.MouseSens = Math.Max(0.1f, Math.Min(5f, Float(v, 1))); break;
                         case "inverty": s.InvertY = Bool(v, false); break;

@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.13.0";
+        public const string Version = "1.13.1";
 
         [STAThread]
         static int Main(string[] args)
@@ -57,7 +57,7 @@ namespace TerminalHell
             int ti = argl.IndexOf("--tol");
             if (ti >= 0 && ti + 1 < argl.Count) VtPresenter.Tolerance = int.Parse(argl[ti + 1]);
             int ri = argl.IndexOf("--res");
-            if (ri >= 0 && ri + 1 < argl.Count) { int r; if (int.TryParse(argl[ri + 1], out r)) settings.Resolution = Math.Max(0, Math.Min(3, r)); }
+            if (ri >= 0 && ri + 1 < argl.Count) { int r; if (int.TryParse(argl[ri + 1], out r)) settings.Resolution = Math.Max(1, Math.Min(3, r)); }
             int startLevel = -1;
             int li = argl.IndexOf("--level");
             if (li >= 0 && li + 1 < argl.Count) { int n; if (int.TryParse(argl[li + 1], out n)) startLevel = Math.Max(0, Math.Min(2, n - 1)); }
