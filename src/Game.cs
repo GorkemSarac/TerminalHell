@@ -168,6 +168,8 @@ namespace TerminalHell
         }
 
         /// <summary>Developer aid: renders one in-game frame (with HUD) to a PNG without a console.</summary>
+        public float DebugFireFor;
+
         public void DebugFrame(int cols, int rows, int level, float x, float y, float angleDeg, float simSeconds, string outPath, bool ascii, int weapon, float pitch)
         {
             scr.Resize(cols, rows);
@@ -179,10 +181,17 @@ namespace TerminalHell
                 for (int i = 0; i < Player.Weapons; i++) world.P.Has[i] = true;
                 world.P.Weapon = weapon;
                 for (int k = 1; k < world.P.Keys.Length; k++) world.P.Keys[k] = true;
-                world.P.Ammo[0] = 50;
+                for (int k = 0; k < Player.AmmoTypes; k++) world.P.Ammo[k] = Player.MaxAmmo[k];
             }
             var inp = new PlayerInput();
-            for (float t = 0; t < simSeconds; t += 1 / 30f) { world.Update(1 / 30f, inp); introTime -= 1 / 30f; }
+            // DebugFireFor: hold the trigger for that many seconds from the start (the frame is taken at simSeconds)
+            for (float t = 0; t < simSeconds; t += 1 / 30f)
+            {
+                inp.Fire = t < DebugFireFor;
+                world.Update(1 / 30f, inp);
+                world.P.AimSlope = 0;
+                introTime -= 1 / 30f;
+            }
             Draw(1 / 30f);
             if (ascii)
             {

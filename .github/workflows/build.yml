@@ -63,6 +63,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "runway level test failed" }
           .\bin\TerminalHell.exe --dev-tower
           if ($LASTEXITCODE -ne 0) { throw "tower level test failed" }
+          .\bin\TerminalHell.exe --dev-arsenal
+          if ($LASTEXITCODE -ne 0) { throw "alternate weapons test failed" }
 
       - name: Soak test (random bot plays every level)
         shell: powershell

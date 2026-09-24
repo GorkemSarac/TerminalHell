@@ -142,20 +142,23 @@ namespace TerminalHell
 
             if (table)
             {
-                // one line per ammo type: the last one only once the ray gun turns up
-                for (int a = 0; a < Player.AmmoTypes; a++)
+                // bullets, shells and rockets always; the fourth line is whichever of the energy weapons' ammo matters right
+                // now (the one in your hand, else the lasers' cells, else the ray gun's soul cells), or the kill count
+                for (int a = 0; a < 3; a++)
                 {
-                    if (a == 3 && !p.Has[10] && p.Ammo[3] == 0)
-                    {
-                        int kills = w.TotalKills > 0 ? w.Kills * 100 / w.TotalKills : 100;
-                        s.Print(xs[6] + 1, y + a, "KILLS " + Pad(kills, 3) + "%", Label, Panel);
-                        break;
-                    }
-                    bool cur = d.Ammo == a;
-                    int fg = cur ? Yellow : Label;
                     string line = Player.AmmoNames[a] + " " + Pad(p.Ammo[a], 3) + "/" + Pad(Player.MaxAmmo[a], 3);
-                    s.Print(xs[6] + 1, y + a, line, fg, Panel);
+                    s.Print(xs[6] + 1, y + a, line, d.Ammo == a ? Yellow : Label, Panel);
                 }
+                bool lasers = p.Has[6] || p.Has[7] || p.Ammo[4] > 0, ray = p.Has[10] || p.Ammo[3] > 0;
+                int extra = d.Ammo == 3 || d.Ammo == 4 ? d.Ammo : lasers ? 4 : ray ? 3 : -1;
+                if (extra < 0)
+                {
+                    int kills = w.TotalKills > 0 ? w.Kills * 100 / w.TotalKills : 100;
+                    s.Print(xs[6] + 1, y + 3, "KILLS " + Pad(kills, 3) + "%", Label, Panel);
+                }
+                else
+                    s.Print(xs[6] + 1, y + 3, Player.AmmoNames[extra] + " " + Pad(p.Ammo[extra], 3) + "/" + Pad(Player.MaxAmmo[extra], 3),
+                        d.Ammo == extra ? Yellow : Label, Panel);
             }
         }
 

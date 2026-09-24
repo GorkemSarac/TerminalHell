@@ -51,6 +51,14 @@ namespace TerminalHell
 
         static float Dist(float x, float drive) { return (float)Math.Tanh(x * drive); }
 
+        /// <summary>A flat envelope with linear fades at both ends, for sounds restarted back to back as a loop.</summary>
+        static float Fade(float t, float len, float fadeIn, float fadeOut)
+        {
+            if (t < fadeIn) return t / fadeIn;
+            if (t > len - fadeOut) return Math.Max(0, (len - t) / fadeOut);
+            return 1;
+        }
+
         /// <summary>Filtered noise burst with a falling cutoff.</summary>
         static void NoiseBurst(float[] b, float start, float amp, float c0, float c1, float attack, float decay, float len)
         {
@@ -229,23 +237,43 @@ namespace TerminalHell
             }
             bank[(int)Sfx.RayGun] = b;
 
-            // the saw: a ragged, buzzing motor - loops under the weapon while it is revving
-            b = Buf(0.5f);
+            // the saw's motor: a ragged, whining buzz. Each copy fades in and out, and a new one starts before the last
+            // has finished, so while the trigger is held the copies cross-fade into one unbroken scream
+            b = Buf(0.34f);
+            {
+                var f = new Svf(); var hi = new Svf();
+                double ph = 0, ph2 = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    double freq = 118 + 6 * Math.Sin(t * 2 * Math.PI * 31);
+                    ph += freq / R; ph2 += freq * 7.02 / R;
+                    float saw = (float)((ph - Math.Floor(ph)) * 2 - 1);
+                    float whine = (float)Math.Sin(ph2 * 2 * Math.PI) * 0.35f;
+                    float body = f.Process(saw * 0.8f + Rnd() * 0.35f, 2200, 0.35f, 0) + hi.Process(Rnd(), 5200, 0.5f, 0) * 0.25f;
+                    b[i] = Dist(body * 2.4f + whine, 1.5f) * Fade(t, 0.34f, 0.08f, 0.1f);
+                }
+                Normalize(b, 0.5f);
+            }
+            bank[(int)Sfx.Saw] = b;
+
+            // the saw biting into something: a tearing grind over the motor
+            b = Buf(0.2f);
             {
                 var f = new Svf();
                 double ph = 0;
                 for (int i = 0; i < b.Length; i++)
                 {
                     float t = (float)i / R;
-                    double freq = 140 + 12 * Math.Sin(t * 2 * Math.PI * 23);
-                    ph += freq / R;
+                    ph += (260 - 90 * t / 0.2f) / R;
                     float saw = (float)((ph - Math.Floor(ph)) * 2 - 1);
-                    float body = f.Process(saw * 0.7f + Rnd() * 0.5f, 1800, 0.4f, 0);
-                    b[i] = Dist(body * 2.2f, 1.6f) * Env(t, 0.02f, 0.6f);
+                    float grit = f.Process(Rnd(), 2600 + 900 * (float)Math.Sin(t * 180), 0.3f, 0);
+                    b[i] = Dist(saw * 0.6f + grit * 1.6f, 2.2f) * Env(t, 0.004f, 0.08f);
                 }
-                Normalize(b, 0.55f);
+                Thump(b, 0, 0.5f, 150, 70, 0.03f, 0.08f);
+                Normalize(b, 0.6f);
             }
-            bank[(int)Sfx.Saw] = b;
+            bank[(int)Sfx.SawBite] = b;
 
             // the laser weapons: a clean tone with a hard edge, snapping off at the end
             b = Buf(0.4f);
@@ -264,6 +292,86 @@ namespace TerminalHell
                 Normalize(b, 0.7f);
             }
             bank[(int)Sfx.Laser] = b;
+
+            // the laser's hum while it burns: two detuned tones and a crackle, cross-faded copy to copy like the saw
+            b = Buf(0.4f);
+            {
+                var f = new Svf();
+                double p1 = 0, p2 = 0, p3 = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    p1 += 196.0 / R; p2 += 199.5 / R; p3 += 784.0 / R;
+                    float tone = (float)(Math.Sin(p1 * 2 * Math.PI) + Math.Sin(p2 * 2 * Math.PI) + 0.45 * Math.Sin(p3 * 2 * Math.PI + Math.Sin(p1 * 6)));
+                    float crackle = Rnd() > 0.992f ? Rnd() * 2.5f : 0;
+                    b[i] = (f.Process(tone + crackle, 2400, 0.6f, 1) * 0.9f) * Fade(t, 0.4f, 0.1f, 0.1f);
+                }
+                Normalize(b, 0.45f);
+            }
+            bank[(int)Sfx.LaserHum] = b;
+
+            // the laser ray charging: a rising whine that climbs and tightens until it lets go
+            b = Buf(0.9f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    float u = Math.Min(1, t / 0.85f);
+                    ph += (260 + 1500 * u * u) / R;
+                    float tone = (float)(Math.Sin(ph * 2 * Math.PI) + 0.4 * Math.Sin(ph * 4 * Math.PI));
+                    float fizz = f.Process(Rnd(), 3000 + 3000 * u, 0.5f, 0) * 0.25f * u;
+                    b[i] = (tone * (0.25f + 0.75f * u) + fizz) * Math.Min(1, (b.Length - i) / 400f);
+                }
+                Normalize(b, 0.55f);
+            }
+            bank[(int)Sfx.LaserCharge] = b;
+
+            // the laser ray going off: a sheet of light tearing outwards, a bright snap dropping into a whoosh
+            b = Buf(0.7f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    ph += (1900 * (float)Math.Exp(-t / 0.12f) + 180) / R;
+                    float tone = (float)Math.Sin(ph * 2 * Math.PI);
+                    float sweep = f.Process(Rnd(), 6000 * (float)Math.Exp(-t / 0.2f) + 400, 0.4f, 0);
+                    b[i] = Dist(tone * 0.9f + sweep * 1.3f, 1.8f) * Env(t, 0.002f, 0.22f);
+                }
+                Thump(b, 0, 0.6f, 120, 45, 0.08f, 0.25f);
+                Normalize(b, 0.85f);
+            }
+            bank[(int)Sfx.LaserArc] = b;
+
+            // the double barrel: both barrels at once - a heavier, longer blast than the pump gun - then the reload:
+            // the action breaking open, two spent shells clattering out, two new ones pushed in, and the snap shut
+            b = Buf(1.3f);
+            NoiseBurst(b, 0, 1.4f, 3600, 260, 0.001f, 0.18f, 0.6f);
+            Thump(b, 0, 1.4f, 95, 28, 0.2f, 0.5f);
+            NoiseBurst(b, 0.012f, 0.9f, 3000, 300, 0.001f, 0.12f, 0.4f);   // the second barrel a hair behind the first
+            NoiseBurst(b, 0.42f, 0.45f, 2200, 1400, 0.001f, 0.014f, 0.05f);  // break open
+            NoiseBurst(b, 0.52f, 0.2f, 5200, 4000, 0.001f, 0.01f, 0.03f);    // shells out
+            NoiseBurst(b, 0.57f, 0.16f, 4800, 3800, 0.001f, 0.01f, 0.03f);
+            NoiseBurst(b, 0.8f, 0.3f, 2600, 1800, 0.001f, 0.012f, 0.04f);    // shells in
+            NoiseBurst(b, 0.9f, 0.3f, 2500, 1700, 0.001f, 0.012f, 0.04f);
+            NoiseBurst(b, 1.05f, 0.55f, 1900, 1200, 0.001f, 0.016f, 0.06f);  // snapped shut
+            Thump(b, 1.05f, 0.25f, 300, 150, 0.02f, 0.05f);
+            for (int i = 0; i < b.Length; i++) b[i] = Dist(b[i], 2.2f);
+            Normalize(b, 0.95f);
+            bank[(int)Sfx.DoubleShotgun] = b;
+
+            // the grenade launcher: a hollow thoonk, not a bang, and the drum clicking round to the next chamber
+            b = Buf(0.5f);
+            Thump(b, 0, 1.2f, 110, 48, 0.08f, 0.25f);
+            NoiseBurst(b, 0, 0.5f, 900, 300, 0.002f, 0.05f, 0.15f);
+            NoiseBurst(b, 0.3f, 0.3f, 3000, 2200, 0.001f, 0.01f, 0.03f);
+            NoiseBurst(b, 0.36f, 0.22f, 2600, 2000, 0.001f, 0.01f, 0.03f);
+            for (int i = 0; i < b.Length; i++) b[i] = Dist(b[i], 1.6f);
+            Normalize(b, 0.8f);
+            bank[(int)Sfx.GrenadeLaunch] = b;
 
             // a grenade's metal-on-concrete clink as it bounces
             b = Buf(0.1f);

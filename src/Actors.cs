@@ -156,6 +156,7 @@ namespace TerminalHell
         public int ShotsLeft;
         public bool Ambush;
         public char Carries;         // an item this one always drops when it dies (a keycard, say)
+        public int Interrupted;      // how many times a saw has knocked it out of an attack it was winding up
         float stuckTime;
 
         public Monster(MonsterDef d, float x, float y)
@@ -657,6 +658,7 @@ namespace TerminalHell
             Owner = owner; X = x; Y = y; Type = type;
             VX = (float)Math.Cos(angle) * speed; VY = (float)Math.Sin(angle) * speed;
             Radius = type == BULLET ? 0.08f : type == SPIT ? 0.1f : type == GRENADE ? 0.14f : 0.12f;
+            if (type == GRENADE) Scale = 1f / 64;
             Z = 0.4f;
         }
 
@@ -669,7 +671,7 @@ namespace TerminalHell
                 case BULLET: return Art.Bullet[f];
                 case RAY: return Art.RayBolt[f];
                 case SPIT: return Art.Spit[f];
-                case GRENADE: return Art.Grenade[f];
+                case GRENADE: return Art.Grenade[(((int)spin) & 3) + (FuseLit(w) ? 4 : 0)];
                 default: return Art.Fireball[f];
             }
         }
@@ -713,36 +715,86 @@ namespace TerminalHell
             else w.AddLight(X, Y, Type == FIREBALL ? 2.6f : 2.2f, 1.0f, 0.45f, 0.12f);
         }
 
-        const float GrenadeGravity = 3.4f;
+        // a grenade leaves the launcher at this speed, along the look direction plus this much lift: a low lob that
+        // drops a few metres out and skips along the floor, not a mortar shot at the ceiling
+        public const float GrenadeSpeed = 10.5f, GrenadeLift = 1.5f;
+        const float GrenadeGravity = 7.5f, GrenadeBounce = 0.56f, GrenadeWall = 0.65f, GrenadeRoll = 5.0f;
+        public int Bounces;       // how many times it has come off the floor (the tests count them)
+        float spin, trailTimer;
 
-        /// <summary>The grenade launcher's alt-fire: bounces off walls and the floor, and goes off on its own
-        /// fuse - or at once if it clips a monster on the way.</summary>
+        /// <summary>The grenade launcher's alt-fire: arcs out, bounces off the floor, the walls and the ceiling, rolls to a
+        /// stop, and goes off when its fuse runs out - or at once if it touches a monster on the way.</summary>
         void UpdateGrenade(World w, float dt)
         {
             Fuse -= dt;
-            VZ -= GrenadeGravity * dt;
             float speed = (float)Math.Sqrt(VX * VX + VY * VY);
-            int steps = Math.Max(1, (int)((speed + Math.Abs(VZ)) * dt / 0.08f) + 1);
-            float sx = VX * dt / steps, sy = VY * dt / steps, sz = VZ * dt / steps;
+            int steps = Math.Max(1, (int)((speed + Math.Abs(VZ)) * dt / 0.05f) + 1);
+            float h = dt / steps;
             for (int i = 0; i < steps; i++)
             {
-                float nx = X + sx, ny = Y + sy;
-                if (w.Map.BlocksMove((int)Math.Floor(nx), (int)Y)) { VX = -VX * 0.55f; sx = -sx; } else X = nx;
-                if (w.Map.BlocksMove((int)Math.Floor(X), (int)Math.Floor(ny))) { VY = -VY * 0.55f; sy = -sy; } else Y = ny;
-                Z += sz;
-                if (Z <= 0)
+                bool rolling = Z <= 0 && VZ == 0;
+                if (!rolling) VZ -= GrenadeGravity * h;
+                // one axis at a time, so it glances off a wall's face instead of stopping dead against it
+                float nx = X + VX * h;
+                if (w.Map.BlocksMove((int)Math.Floor(nx), (int)Math.Floor(Y))) { Clink(w, Math.Abs(VX)); VX = -VX * GrenadeWall; }
+                else X = nx;
+                float ny = Y + VY * h;
+                if (w.Map.BlocksMove((int)Math.Floor(X), (int)Math.Floor(ny))) { Clink(w, Math.Abs(VY)); VY = -VY * GrenadeWall; }
+                else Y = ny;
+                if (!rolling)
                 {
-                    Z = 0;
-                    if (VZ < -0.3f) { VZ = -VZ * 0.45f; Audio.PlayAt(Sfx.GrenadeBounce, X, Y, 0.7f, 0); }
-                    else VZ = 0;
-                    VX *= 0.8f; VY *= 0.8f;
+                    Z += VZ * h;
+                    if (Z <= 0)
+                    {
+                        Z = 0;
+                        if (VZ < -0.6f)
+                        {
+                            Clink(w, -VZ);
+                            VZ = -VZ * GrenadeBounce;
+                            VX *= 0.82f; VY *= 0.82f;
+                            Bounces++;
+                        }
+                        else VZ = 0;   // too slow to come off the floor again: from here on it rolls
+                    }
+                    else if (Z + 0.14f > 0.98f && !w.Map.IsOutdoor((int)X, (int)Y))
+                    {
+                        Z = 0.84f;
+                        if (VZ > 0) { Clink(w, VZ); VZ = -VZ * 0.5f; }
+                    }
                 }
-                else if (Z + 0.1f > 0.97f && !w.Map.IsOutdoor((int)X, (int)Y)) { Z = 0.85f; VZ = -Math.Abs(VZ) * 0.4f; }
+                else
+                {
+                    float sp = (float)Math.Sqrt(VX * VX + VY * VY);
+                    if (sp > 0) { float ns = Math.Max(0, sp - GrenadeRoll * h); VX *= ns / sp; VY *= ns / sp; }
+                }
                 var hit = w.ProjectileHit(this);
                 if (hit != null) { Impact(w, hit); return; }
             }
+            spin += speed * dt * 2.2f;
             if (Fuse <= 0) { Impact(w, null); return; }
-            w.AddLight(X, Y, 2.0f, 1.0f, 0.5f, 0.15f);
+            // a thin smoke trail while it is in the air, and the fuse light blinking faster as it runs down
+            trailTimer -= dt;
+            if (trailTimer <= 0 && Z > 0.03f)
+            {
+                trailTimer = 0.05f;
+                var e = new Effect(Art.Puff, X, Y, Z, 0.35f);
+                e.Scale = 1f / 130;
+                e.VZ = 0.15f;
+                w.Add(e);
+            }
+            if (FuseLit(w)) w.AddLight(X, Y, 1.6f, 1.2f, 0.25f, 0.12f);
+        }
+
+        /// <summary>The fuse light on the grenade: slow blinks at first, then faster and faster as it runs out.</summary>
+        bool FuseLit(World w)
+        {
+            float period = 0.07f + Math.Max(0, Fuse) * 0.12f;
+            return ((int)(w.Time / period + Tag)) % 2 == 0;
+        }
+
+        void Clink(World w, float speed)
+        {
+            if (speed > 0.5f) Audio.PlayAt(Sfx.GrenadeBounce, X, Y, Math.Min(0.9f, 0.25f + speed * 0.12f), 0);
         }
 
         /// <summary>Knocked back by the player's fist: it flies home, faster and angrier.</summary>
@@ -808,6 +860,7 @@ namespace TerminalHell
         public float VX, VY, VZ, Gravity;
         public bool Glow;
         public float Light;
+        public float LR = 1.4f, LG = 0.7f, LB = 0.25f;   // the colour of that light (a fiery orange unless told otherwise)
 
         public Effect(Image[] frames, float x, float y, float z, float life)
         {
@@ -839,8 +892,113 @@ namespace TerminalHell
             if (Light > 0)
             {
                 float k = 1 - Age / Life;
-                w.AddLight(X, Y, Light * (0.6f + k * 0.4f), 1.4f * k, 0.7f * k, 0.25f * k);
+                w.AddLight(X, Y, Light * (0.6f + k * 0.4f), LR * k, LG * k, LB * k);
             }
+        }
+    }
+
+    /// <summary>
+    /// The laser ray's shot: a flat arc of light that sweeps outwards from where the player stood, about seventy degrees
+    /// wide, and burns every body its edge passes over - not just the first one - until the walls stop it. It has no
+    /// sprite of its own: each frame it lays a line of short-lived motes along its leading edge.
+    /// </summary>
+    sealed class LaserArc : Actor
+    {
+        public const float HalfAngle = 0.62f, Speed = 15f, Range = 18f;
+        const int Samples = 33;
+        readonly float oz, ang;
+        readonly float[] wall = new float[Samples];
+        readonly bool[] stopped = new bool[Samples];
+        public readonly System.Collections.Generic.List<Actor> Hit = new System.Collections.Generic.List<Actor>();
+        readonly Actor owner;
+        readonly int dmgMin, dmgMax;
+        float r = 0.35f;
+
+        public LaserArc(World w, Player p, int dmgMin, int dmgMax)
+        {
+            Kind = ActorKind.Effect;
+            owner = p; X = p.X; Y = p.Y; oz = p.EyeZ - 0.12f; ang = p.Angle;
+            this.dmgMin = dmgMin; this.dmgMax = dmgMax;
+            for (int k = 0; k < Samples; k++)
+            {
+                float a = ang - HalfAngle + 2 * HalfAngle * k / (Samples - 1);
+                wall[k] = w.Map.RayCast(X, Y, (float)Math.Cos(a), (float)Math.Sin(a), Range);
+            }
+        }
+
+        /// <summary>How far the arc gets in a direction before a wall stops it (the nearer of the two samples either side,
+        /// so it never bleeds round the corner of a doorway).</summary>
+        float WallAt(float a)
+        {
+            float k = (a - (ang - HalfAngle)) / (2 * HalfAngle) * (Samples - 1);
+            int k0 = Math.Max(0, Math.Min(Samples - 1, (int)Math.Floor(k))), k1 = Math.Min(Samples - 1, k0 + 1);
+            return Math.Min(wall[k0], wall[k1]);
+        }
+
+        public override Image Sprite(World w) { return null; }
+
+        public override void Update(World w, float dt)
+        {
+            r += Speed * dt;
+            // everything the edge has swept over, if it is in front of the player and has a clear line back to them
+            foreach (var a in w.Actors)
+            {
+                if (!a.Shootable || a == owner || Hit.Contains(a)) continue;
+                float dx = a.X - X, dy = a.Y - Y;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dist - a.Radius > r || dist - a.Radius > Range) continue;
+                float da = (float)Math.Atan2(dy, dx) - ang;
+                while (da > Math.PI) da -= (float)(2 * Math.PI);
+                while (da < -Math.PI) da += (float)(2 * Math.PI);
+                if (Math.Abs(da) > HalfAngle + (float)Math.Atan2(a.Radius, Math.Max(0.3f, dist))) continue;
+                if (!w.Map.LOS(X, Y, a.X, a.Y)) continue;
+                Hit.Add(a);
+                a.Damage(w, w.Rng.Next(dmgMin, dmgMax + 1), owner, false);
+                var flare = new Effect(Art.ArcMote, a.X, a.Y, Math.Max(0, oz - 0.12f), 0.22f);
+                flare.Scale = 1f / 36;
+                flare.Glow = true;
+                w.Add(flare);
+            }
+            // the edge itself: a line of motes, with a fainter one just behind it so it reads as a band of light
+            float spacing = Math.Max(0.14f, Math.Min(0.4f, r * 0.05f));
+            int n = Math.Max(8, (int)(2 * HalfAngle * r / spacing));
+            bool alive = false;
+            for (int i = 0; i <= n; i++)
+            {
+                float a = ang - HalfAngle + 2 * HalfAngle * i / n;
+                float reach = WallAt(a);
+                if (r >= reach) continue;
+                alive = true;
+                float ca = (float)Math.Cos(a), sa = (float)Math.Sin(a);
+                var m = new Effect(Art.ArcMote, X + ca * r, Y + sa * r, oz, 0.07f);
+                m.Scale = 1f / 150;
+                m.Glow = true;
+                w.Add(m);
+                if (r > 1.2f && (i & 1) == 0)
+                {
+                    var tail = new Effect(Art.ArcMote, X + ca * (r - 0.3f), Y + sa * (r - 0.3f), oz + 0.01f, 0.045f);
+                    tail.Scale = 1f / 230;
+                    tail.Glow = true;
+                    w.Add(tail);
+                }
+            }
+            // sparks where it hits the walls
+            for (int k = 0; k < Samples; k += 2)
+            {
+                if (stopped[k] || r < wall[k]) continue;
+                stopped[k] = true;
+                if (wall[k] >= Range - 0.1f) continue;
+                float a = ang - HalfAngle + 2 * HalfAngle * k / (Samples - 1);
+                var sp = new Effect(Art.ArcSpark, X + (float)Math.Cos(a) * (wall[k] - 0.08f), Y + (float)Math.Sin(a) * (wall[k] - 0.08f), oz, 0.3f);
+                sp.VZ = 0.6f;
+                sp.Gravity = 3;
+                sp.Scale = 1f / 70;
+                sp.Glow = true;
+                w.Add(sp);
+            }
+            float mid = Math.Min(r, WallAt(ang) - 0.2f);
+            if (mid > 0) w.AddLight(X + (float)Math.Cos(ang) * mid, Y + (float)Math.Sin(ang) * mid, 3.6f, 0.35f, 1.0f, 1.6f);
+            if (!alive || r > Range) Remove = true;
         }
     }
 }

@@ -29,6 +29,9 @@ namespace TerminalHell
 
         public static Mat Scale(float s) { return new Mat { A = s, E = s, I = s }; }
 
+        /// <summary>A different scale on each axis: squashes a round tube into an oval one.</summary>
+        public static Mat Scale(float sx, float sy, float sz) { return new Mat { A = sx, E = sy, I = sz }; }
+
         /// <summary>Rotation around X (pitch: positive tips the front up).</summary>
         public static Mat RotX(float a)
         {
@@ -153,6 +156,60 @@ namespace TerminalHell
             }
         }
 
+        /// <summary>One flat-shaded quad (a, b, c, d in order) in the current local frame.</summary>
+        public void Quad(V3 a, V3 b, V3 c, V3 d, int col, bool emissive) { Face(a, b, c, d, col, emissive); }
+
+        /// <summary>
+        /// A side profile extruded sideways: a convex polygon given as (y, z) pairs in the local YZ plane, made solid by
+        /// giving it a thickness of 2*hx along X around cx. Stocks, grips, guards and angular housings are all built this way.
+        /// </summary>
+        public void Slab(float cx, float hx, float[] yz, int col) { Slab(cx, hx, yz, col, false); }
+
+        public void Slab(float cx, float hx, float[] yz, int col, bool emissive)
+        {
+            int n = yz.Length / 2;
+            for (int i = 1; i + 1 < n; i++)
+            {
+                Tri3(new V3(cx + hx, yz[0], yz[1]), new V3(cx + hx, yz[i * 2], yz[i * 2 + 1]), new V3(cx + hx, yz[i * 2 + 2], yz[i * 2 + 3]), col, emissive);
+                Tri3(new V3(cx - hx, yz[0], yz[1]), new V3(cx - hx, yz[i * 2 + 2], yz[i * 2 + 3]), new V3(cx - hx, yz[i * 2], yz[i * 2 + 1]), col, emissive);
+            }
+            for (int i = 0; i < n; i++)
+            {
+                int j = (i + 1) % n;
+                Face(new V3(cx - hx, yz[i * 2], yz[i * 2 + 1]), new V3(cx + hx, yz[i * 2], yz[i * 2 + 1]),
+                     new V3(cx + hx, yz[j * 2], yz[j * 2 + 1]), new V3(cx - hx, yz[j * 2], yz[j * 2 + 1]), col, emissive);
+            }
+        }
+
+        /// <summary>A box with its four long edges (the ones running along X) cut off at 45 degrees by c - so a housing reads
+        /// as machined metal rather than a plain block.</summary>
+        public void Bevel(float cx, float cy, float cz, float hx, float hy, float hz, float c, int col)
+        {
+            Slab(cx, hx, new[] { cy + hy, cz - hz + c, cy + hy, cz + hz - c, cy + hy - c, cz + hz, cy - hy + c, cz + hz,
+                                 cy - hy, cz + hz - c, cy - hy, cz - hz + c, cy - hy + c, cz - hz, cy + hy - c, cz - hz }, col);
+        }
+
+        /// <summary>
+        /// A curved band: the part of a flat ring (in the local YZ plane, centred on (cy, cz)) between angles a0 and a1,
+        /// from radius r0 to r1, given a thickness of 2*hx along X. Angle 0 points forward (+z), a quarter turn points up.
+        /// </summary>
+        public void Band(float cx, float cy, float cz, float r0, float r1, float a0, float a1, float hx, int seg, int col)
+        {
+            for (int i = 0; i < seg; i++)
+            {
+                float t0 = a0 + (a1 - a0) * i / seg, t1 = a0 + (a1 - a0) * (i + 1) / seg;
+                float s0 = (float)Math.Sin(t0), c0 = (float)Math.Cos(t0), s1 = (float)Math.Sin(t1), c1 = (float)Math.Cos(t1);
+                var yz = new[] { cy + s0 * r0, cz + c0 * r0, cy + s0 * r1, cz + c0 * r1, cy + s1 * r1, cz + c1 * r1, cy + s1 * r0, cz + c1 * r0 };
+                Slab(cx, hx, yz, col);
+            }
+        }
+
+        public void Tri3(V3 a, V3 b, V3 c, int col, bool emissive)
+        {
+            var t = New();
+            t.P0 = M.Point(a); t.P1 = M.Point(b); t.P2 = M.Point(c); t.Col = col; t.Emissive = emissive; t.Flat = true;
+        }
+
         /// <summary>Low-poly smooth ellipsoid (knuckles, hands).</summary>
         public void Ball(float cx, float cy, float cz, float rx, float ry, float rz, int col) { Ball(cx, cy, cz, rx, ry, rz, col, false); }
 
@@ -202,13 +259,18 @@ namespace TerminalHell
             Array.Clear(depth, 0, W * viewH);
 
             int weapon = p.Weapon;
+            var def = WeaponDef.All[weapon];
             float t = p.FireAnim;
-            bool firing = t < WeaponDef.All[weapon].Anim + 0.05f;
+            bool firing = t < def.Anim + 0.05f;
+            float charge = def.ChargeTime > 0 ? Math.Min(1, p.Charge / def.ChargeTime) : 0;
 
-            // minigun barrels (and the saw's blade) spin up while firing and spin down afterwards
-            if ((weapon == 3 || weapon == 1) && t < 0.15f) spinSpeed = Math.Min(40, spinSpeed + dt * 160);
+            // minigun barrels spin up while firing and spin down afterwards
+            if (weapon == 3 && t < 0.15f) spinSpeed = Math.Min(40, spinSpeed + dt * 160);
             else spinSpeed = Math.Max(0, spinSpeed - dt * 30);
             spin += spinSpeed * dt;
+            // the saw's blade follows its motor; the laser warms up while it burns and cools down after
+            sawSpin += (weapon == 1 ? p.SawRev * p.SawRev * 75 : 0) * dt;
+            laserHeat = weapon == 6 && p.BeamOn ? Math.Min(1, laserHeat + dt * 0.35f) : Math.Max(0, laserHeat - dt * 0.5f);
 
             // ---- where the gun is held (camera space) and how it moves
             float bob = p.BobAmt;
@@ -217,14 +279,28 @@ namespace TerminalHell
             float recoil = 0, kickUp = 0;
             switch (weapon)
             {
+                case 1:
+                    // the motor makes the whole tool buzz in the hand, and it bucks when the blade catches
+                    bx += (float)Math.Sin(time * 91) * 0.0018f * p.SawRev + (float)Math.Sin(time * 57) * 0.004f * (p.SawBite > 0 ? 1 : 0);
+                    by += (float)Math.Sin(time * 77) * 0.0015f * p.SawRev;
+                    recoil = p.SawBite > 0 ? 0.35f + 0.25f * (float)Math.Sin(time * 60) : 0;
+                    break;
                 case 2: recoil = Kick(t, 0.02f, 16) * 1.0f; break;
                 case 3: recoil = t < 0.1f ? 0.45f + 0.25f * (float)Math.Sin(time * 90) : 0; break;
                 case 4: recoil = Kick(t, 0.02f, 9) * 2.0f; break;
-                case 5: recoil = Kick(t, 0.02f, 7) * 3.0f; break;
-                case 6: recoil = firing ? 0.12f + 0.1f * (float)Math.Sin(time * 70) : 0; break;
-                case 7: recoil = Kick(t, 0.03f, 8) * 2.4f; break;
+                case 5: recoil = Kick(t, 0.025f, 6) * 3.2f; break;
+                case 6:
+                    recoil = p.BeamOn ? 0.1f + 0.06f * (float)Math.Sin(time * 83) : 0;
+                    bx += p.BeamOn ? (float)Math.Sin(time * 61) * 0.0012f : 0;
+                    break;
+                case 7:
+                    // winding up it trembles harder and harder; letting go it kicks
+                    recoil = Kick(t, 0.03f, 6) * 2.8f;
+                    bx += (float)Math.Sin(time * 70) * 0.003f * charge * charge;
+                    by += (float)Math.Sin(time * 53) * 0.002f * charge * charge;
+                    break;
                 case 8: recoil = Kick(t, 0.03f, 7) * 2.6f; break;
-                case 9: recoil = Kick(t, 0.03f, 7) * 2.0f; break;
+                case 9: recoil = Kick(t, 0.025f, 7) * 2.6f; break;
                 case 10: recoil = Kick(t, 0.04f, 8) * 2.2f; break;
             }
             kickUp = recoil;
@@ -235,14 +311,14 @@ namespace TerminalHell
             switch (weapon)
             {
                 case 0: ox = 0.12f; oy = -0.1f; oz = 0.36f; break;
-                case 1: ox = 0.116f; oy = -0.085f; oz = 0.4f; break;
+                case 1: ox = 0.118f; oy = -0.088f; oz = 0.36f; break;
                 case 2: ox = 0.118f; oy = -0.075f; oz = 0.45f; break;
                 case 3: oy = -0.11f; oz = 0.46f; break;
-                case 5: ox = 0.135f; oy = -0.1f; oz = 0.4f; break;
-                case 6: ox = 0.124f; oy = -0.09f; oz = 0.42f; break;
-                case 7: ox = 0.13f; oy = -0.1f; oz = 0.46f; break;
+                case 5: ox = 0.128f; oy = -0.1f; oz = 0.38f; break;
+                case 6: ox = 0.13f; oy = -0.106f; oz = 0.4f; break;
+                case 7: ox = 0.128f; oy = -0.108f; oz = 0.4f; break;
                 case 8: ox = 0.14f; oy = -0.115f; oz = 0.5f; break;
-                case 9: ox = 0.135f; oy = -0.11f; oz = 0.44f; break;
+                case 9: ox = 0.132f; oy = -0.112f; oz = 0.42f; break;
                 case 10: ox = 0.128f; oy = -0.1f; oz = 0.44f; break;
             }
             // the parry: a backhand bash that winds the weapon in, then sweeps it out to the right
@@ -270,16 +346,16 @@ namespace TerminalHell
             switch (weapon)
             {
                 case 0: muzzle = BuildFists(root, t); break;
-                case 1: muzzle = BuildSaw(root, spin); break;
+                case 1: muzzle = BuildSaw(root, p, time); break;
                 case 2: muzzle = BuildPistol(root); break;
                 case 3: muzzle = BuildMinigun(root, spin); break;
                 case 4: muzzle = BuildShotgun(root, t); break;
-                case 5: muzzle = BuildDoubleShotgun(root, t); break;
-                case 6: muzzle = BuildLaserBeam(root, firing, time); break;
-                case 7: muzzle = BuildLaserRay(root, t); break;
+                case 5: muzzle = BuildDoubleShotgun(root, t, p.LastShots); break;
+                case 6: muzzle = BuildLaser(root, p.BeamOn, time); break;
+                case 7: muzzle = BuildLaserRay(root, t, charge, time); break;
                 case 8: muzzle = BuildLauncher(root, t); break;
-                case 9: muzzle = BuildGrenadeLauncher(root, t); break;
-                default: muzzle = BuildRayGun(root, t, time, Math.Min(1, p.Charge / Player.RayChargeTime)); break;
+                case 9: muzzle = BuildGrenadeLauncher(root, t, p.Ammo[2]); break;
+                default: muzzle = BuildRayGun(root, t, time, charge); break;
             }
 
             // ---- rasterize
@@ -287,7 +363,7 @@ namespace TerminalHell
             float fy = (viewH * 0.5f) / (float)Math.Tan(21 * Math.PI / 180), fx = fy / aspect;
             float cx = W * 0.5f, cy = viewH * 0.5f;
             bool bigFlash = weapon == 4 || weapon == 5 || weapon == 8 || weapon == 9;
-            bool flash = weapon != 0 && weapon != 1 && t < (bigFlash ? 0.08f : 0.055f);
+            bool flash = weapon != 0 && weapon != 1 && weapon != 6 && weapon != 7 && t < (bigFlash ? 0.08f : 0.055f);
             float lit = light + (flash ? 0.6f : 0);
             foreach (var tri in mb.Tris) Raster(s.Pix, W, viewH, tri, fx, fy, cx, cy, lit);
 
@@ -301,13 +377,72 @@ namespace TerminalHell
                     if (edge) s.Pix[i] = Col.Scale(s.Pix[i], 0.55f);
                 }
 
-            // ---- muzzle flash
+            // ---- muzzle flash (both barrels of the double barrel get their own)
             if (flash && muzzle.Z > 0.05f)
             {
-                float mx = cx + muzzle.X / muzzle.Z * fx, my = cy - muzzle.Y / muzzle.Z * fy;
-                float r = (bigFlash ? 0.034f : 0.022f) / muzzle.Z * fx;
-                FlashGlow(s, W, viewH, mx, my, Math.Max(2, r), aspect, time);
+                float r = bigFlash ? 0.034f : 0.022f;
+                if (weapon == 5 && p.LastShots >= 2)
+                {
+                    Flash(s, W, viewH, dsgMuzzleL, r * 0.8f, fx, fy, cx, cy, aspect, time, FlashHot, FlashFire);
+                    Flash(s, W, viewH, dsgMuzzleR, r * 0.8f, fx, fy, cx, cy, aspect, time + 0.3f, FlashHot, FlashFire);
+                }
+                else Flash(s, W, viewH, muzzle, r, fx, fy, cx, cy, aspect, time, FlashHot, FlashFire);
             }
+            // ---- the laser's beam: one line of red light from the lens to whatever the crosshair is on
+            if (weapon == 6 && p.BeamOn && muzzle.Z > 0.05f) DrawBeam(s, W, viewH, muzzle, fx, fy, cx, cy, p, time);
+            // ---- the laser ray letting go: a blue flash across its emitter
+            if (weapon == 7 && t < 0.12f && muzzle.Z > 0.05f)
+                Flash(s, W, viewH, muzzle, 0.05f * (1 - t / 0.12f) + 0.02f, fx, fy, cx, cy, aspect, time, Col.Rgb(230, 255, 255), Col.Rgb(30, 130, 255));
+        }
+
+        static float sawSpin, laserHeat;
+        static V3 dsgMuzzleL, dsgMuzzleR;
+        static readonly int FlashHot = Col.Rgb(255, 250, 215), FlashFire = Col.Rgb(255, 110, 20);
+
+        static void Flash(Screen s, int W, int H, V3 at, float size, float fx, float fy, float cx, float cy, float aspect, float time, int hot, int fire)
+        {
+            if (at.Z <= 0.05f) return;
+            float mx = cx + at.X / at.Z * fx, my = cy - at.Y / at.Z * fy;
+            FlashGlow(s, W, H, mx, my, Math.Max(2, size / at.Z * fx), aspect, time, hot, fire);
+        }
+
+        /// <summary>
+        /// The laser's beam, drawn over the view: a line from the lens (lower right) to the crosshair, which is exactly where
+        /// the beam meets whatever it is burning - every point along the aim line lands on the crosshair. It is thick and
+        /// hot at the gun, thins with distance, flickers, and ends in a flare that is brighter when it is cutting into a body.
+        /// </summary>
+        static void DrawBeam(Screen s, int W, int H, V3 muzzle, float fx, float fy, float cx, float cy, Player p, float time)
+        {
+            float mx = cx + muzzle.X / muzzle.Z * fx, my = cy - muzzle.Y / muzzle.Z * fy;
+            float ex = cx, ey = cy;
+            float len = (float)Math.Sqrt((ex - mx) * (ex - mx) + (ey - my) * (ey - my));
+            if (len < 1) return;
+            float flicker = 0.85f + 0.15f * (float)Math.Sin(time * 71) + 0.08f * (float)Math.Sin(time * 29);
+            float w0 = Math.Max(1.2f, 0.011f / muzzle.Z * fx) * flicker, w1 = Math.Max(0.6f, w0 * 0.22f);
+            int core = Col.Rgb(255, 236, 228), glow = Col.Rgb(255, 34, 22);
+            int x0 = (int)Math.Max(0, Math.Min(mx, ex) - w0 * 3 - 2), x1 = (int)Math.Min(W - 1, Math.Max(mx, ex) + w0 * 3 + 2);
+            int y0 = (int)Math.Max(0, Math.Min(my, ey) - w0 * 3 - 2), y1 = (int)Math.Min(H - 1, Math.Max(my, ey) + w0 * 3 + 2);
+            float ux = (ex - mx) / len, uy = (ey - my) / len;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    float px = x + 0.5f - mx, py = y + 0.5f - my;
+                    float along = px * ux + py * uy;
+                    if (along < 0 || along > len) continue;
+                    float k = along / len;
+                    float half = w0 + (w1 - w0) * k;
+                    float d = Math.Abs(px * uy - py * ux);
+                    float halo = half * 2.8f;
+                    if (d > halo) continue;
+                    int i = y * W + x;
+                    if (d <= half * 0.55f) s.Pix[i] = Col.Lerp(s.Pix[i], core, 0.95f);
+                    else if (d <= half) s.Pix[i] = Col.Lerp(s.Pix[i], Col.Lerp(core, glow, 0.5f), 0.9f);
+                    else s.Pix[i] = Col.Lerp(s.Pix[i], glow, 0.55f * (1 - (d - half) / (halo - half)));
+                }
+            // the flare where it lands, and a smaller one at the lens
+            float fr = (p.BeamOnBody ? 5.5f : 3.5f) * Math.Max(0.5f, Math.Min(1.6f, 4 / Math.Max(0.5f, p.BeamDist))) * flicker * H / 90f;
+            FlashGlow(s, W, H, ex, ey, Math.Max(1.5f, fr), 1, time, core, glow);
+            FlashGlow(s, W, H, mx, my, Math.Max(1.5f, w0 * 1.8f), 1, time, core, glow);
         }
 
         static float Kick(float t, float rise, float decay)
@@ -467,130 +602,448 @@ namespace TerminalHell
             return m.Point(new V3(0, 0.035f, 0.5f));
         }
 
-        /// <summary>The grenade launcher: a short, stubby break-action tube - the rocket launcher's squat cousin.</summary>
-        static V3 BuildGrenadeLauncher(Mat m, float t)
-        {
-            mb.M = m;
-            mb.Cyl(new V3(0, 0.03f, -0.02f), new V3(0, 0.03f, 0.3f), 0.04f, 0.04f, 14, Dark, false);                        // tube
-            mb.Cyl(new V3(0, 0.03f, 0.08f), new V3(0, 0.03f, 0.1f), 0.0405f, 0.0405f, 14, Col.Rgb(210, 170, 40), false);   // hazard band
-            mb.Cyl(new V3(0, 0.03f, 0.29f), new V3(0, 0.03f, 0.33f), 0.04f, 0.05f, 14, Col.Scale(Metal, 0.9f), false);     // muzzle
-            mb.Cyl(new V3(0, 0.03f, 0.325f), new V3(0, 0.03f, 0.326f), 0.044f, 0.044f, 14, Black, true);
-            if (t > 0.32f) mb.Ball(0, 0.03f, 0.3f, 0.028f, 0.028f, 0.024f, Col.Rgb(64, 78, 56));   // the next grenade, loaded
-            mb.Cyl(new V3(0, 0.03f, -0.03f), new V3(0, 0.03f, -0.02f), 0.043f, 0.043f, 14, Dark, true);
-            // a stubby iron sight, no scope
-            mb.Box(0, 0.075f, 0.1f, 0.006f, 0.012f, 0.006f, Dark);
-            var grip = m.Mul(Mat.Translate(0, -0.012f, 0.02f)).Mul(Mat.RotX(-0.24f));
-            mb.M = grip;
-            mb.Box(0, -0.03f, 0, 0.013f, 0.032f, 0.018f, Dark);
-            Hand(grip, 0.002f, -0.036f, -0.004f, true);
-            Arm(grip, new V3(0.005f, -0.062f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
-            var left = m.Mul(Mat.Translate(-0.01f, -0.018f, 0.17f)).Mul(Mat.RotZ(0.7f));
-            mb.M = left;
-            mb.Box(0, -0.012f, 0, 0.018f, 0.014f, 0.03f, Glove);
-            Arm(m, new V3(-0.022f, -0.03f, 0.16f), new V3(-0.1f, -0.1f, 0.03f));
-            return m.Point(new V3(0, 0.03f, 0.34f));
-        }
+        /// <summary>How far through a stretch of an animation: 0 before a, 1 after b, eased in between.</summary>
+        static float Seg(float t, float a, float b) { return Smooth((t - a) / (b - a)); }
 
-        /// <summary>The saw: a handheld angular frame around a spinning blade.</summary>
-        static V3 BuildSaw(Mat m, float spin)
-        {
-            mb.M = m;
-            mb.Box(0, 0, 0, 0.02f, 0.028f, 0.05f, Dark);                                          // motor housing
-            mb.Box(0.024f, 0.006f, -0.03f, 0.006f, 0.014f, 0.012f, Metal);                        // pull-start knob
-            var blade = m.Mul(Mat.Translate(0, 0.006f, 0.11f)).Mul(Mat.RotZ(spin));
-            mb.M = blade;
-            mb.Cyl(new V3(0, 0, -0.004f), new V3(0, 0, 0.004f), 0.062f, 0.062f, 16, Steel, false);
-            for (int k = 0; k < 10; k++)
-            {
-                double a = k * Math.PI / 5;
-                mb.Box((float)Math.Cos(a) * 0.062f, (float)Math.Sin(a) * 0.062f, 0, 0.008f, 0.008f, 0.006f, Col.Scale(Steel, 1.2f));
-            }
-            mb.M = m;
-            mb.Box(0, 0.02f, 0.05f, 0.005f, 0.014f, 0.06f, Dark);                                  // guide bar the blade rides on
-            var grip = m.Mul(Mat.Translate(0, -0.028f, -0.01f)).Mul(Mat.RotX(-0.15f));
-            mb.M = grip;
-            mb.Box(0, -0.03f, 0, 0.014f, 0.03f, 0.02f, Col.Rgb(40, 38, 36));
-            Hand(grip, 0.002f, -0.036f, -0.004f, true);
-            Arm(grip, new V3(0.005f, -0.06f, -0.03f), new V3(0.05f, -0.14f, -0.15f));
-            var left = m.Mul(Mat.Translate(-0.006f, 0.006f, 0.02f)).Mul(Mat.RotZ(0.3f));
-            mb.M = left;
-            mb.Box(0, -0.01f, 0, 0.018f, 0.014f, 0.026f, Glove);
-            Arm(m, new V3(-0.018f, -0.02f, 0.02f), new V3(-0.09f, -0.09f, -0.05f));
-            return m.Point(new V3(0, 0.006f, 0.16f));
-        }
+        static V3 Lerp3(V3 a, V3 b, float k) { return a + (b - a) * k; }
 
-        static readonly int LaserMetal = Col.Rgb(70, 90, 110), LaserGlow = Col.Rgb(90, 220, 255);
+        // ------------------------------------------------------------------ the saw
 
-        /// <summary>The laser: a sleek tech barrel around a lens that glows brighter while it burns.</summary>
-        static V3 BuildLaserBeam(Mat m, bool firing, float time)
+        static readonly int ToolYellow = Col.Rgb(226, 176, 34), ToolYellowDark = Col.Rgb(150, 110, 18), Rubber = Col.Rgb(30, 30, 32);
+        static readonly int GearGrey = Col.Rgb(96, 100, 108), GuardGrey = Col.Rgb(64, 66, 72), BladeSteel = Col.Rgb(176, 182, 192);
+
+        /// <summary>
+        /// The saw: a cordless angle saw. A yellow motor body with a black rubber pistol grip and a battery under it, a
+        /// grey gear head, and a toothed blade standing on edge at the front-left, spinning in a half guard. The left hand
+        /// holds a stub handle under the head. The blade runs up with the motor, and throws sparks when it bites.
+        /// </summary>
+        static V3 BuildSaw(Mat m, Player p, float time)
         {
-            int glow = Col.Lerp(Col.Rgb(30, 70, 90), LaserGlow, firing ? 0.85f + 0.15f * (float)Math.Sin(time * 40) : 0.15f);
+            m = m.Mul(Mat.Scale(0.74f));
+            const float R = 0.078f;
+            var hub = new V3(-0.046f, -0.004f, 0.108f);
             mb.M = m;
-            mb.Box(0, 0.02f, 0.0f, 0.024f, 0.03f, 0.09f, LaserMetal);                              // body
-            mb.Cyl(new V3(0, 0.024f, 0.08f), new V3(0, 0.024f, 0.34f), 0.02f, 0.017f, 12, Col.Scale(LaserMetal, 0.85f), false);   // tapered barrel
-            mb.Cyl(new V3(0, 0.024f, 0.08f), new V3(0, 0.024f, 0.34f), 0.021f, 0.018f, 12, Dark, false, 0, false);
-            mb.Ball(0, 0.024f, 0.345f, 0.016f, 0.016f, 0.012f, glow, true);                        // the lens
-            for (int k = 0; k < 3; k++) mb.Cyl(new V3(0, 0.024f, 0.13f + k * 0.06f), new V3(0, 0.024f, 0.15f + k * 0.06f), 0.0215f, 0.0215f, 12, Col.Scale(LaserMetal, 1.1f), false);
-            mb.Box(0, 0.05f, 0.0f, 0.006f, 0.012f, 0.03f, glow, true);                              // a charge indicator along the top
-            var grip = m.Mul(Mat.Translate(0, -0.02f, -0.01f)).Mul(Mat.RotX(-0.25f));
+            // motor body, banded, with vents along the top and a status light
+            mb.Cyl(new V3(0, 0, -0.1f), new V3(0, 0, 0.055f), 0.025f, 0.03f, 14, ToolYellow, false);
+            mb.Ball(0, 0, -0.1f, 0.025f, 0.025f, 0.014f, Rubber);
+            mb.Cyl(new V3(0, 0, -0.05f), new V3(0, 0, -0.034f), 0.0275f, 0.0285f, 14, Rubber, false);
+            for (int k = 0; k < 4; k++) mb.Box(0, 0.027f + k * 0.0006f, -0.02f + k * 0.016f, 0.012f, 0.002f, 0.003f, ToolYellowDark);
+            mb.Box(0.012f, 0.022f, -0.075f, 0.003f, 0.003f, 0.004f, p.SawRev > 0.05f ? Col.Rgb(90, 255, 110) : Col.Rgb(20, 90, 30), true);
+            // the gear head and the spindle housing reaching over to the blade
+            mb.Box(0, -0.002f, 0.085f, 0.026f, 0.027f, 0.032f, GearGrey);
+            mb.Cyl(new V3(0.015f, hub.Y, hub.Z), new V3(hub.X + 0.011f, hub.Y, hub.Z), 0.021f, 0.019f, 12, Col.Scale(GearGrey, 0.85f), true);
+            // the pistol grip under the back of the motor, with the trigger and the battery
+            var grip = m.Mul(Mat.Translate(0, -0.024f, -0.072f)).Mul(Mat.RotX(-0.34f));
             mb.M = grip;
-            mb.Box(0, -0.036f, 0, 0.013f, 0.036f, 0.019f, Dark);
+            mb.Box(0, -0.036f, 0, 0.013f, 0.04f, 0.018f, Rubber);
+            mb.Box(0, -0.004f, 0.022f, 0.005f, 0.009f, 0.006f, Col.Rgb(200, 40, 30));
+            mb.Box(0, -0.084f, 0.012f, 0.021f, 0.014f, 0.036f, ToolYellow);
+            mb.Box(0, -0.1f, 0.012f, 0.0215f, 0.003f, 0.0365f, Rubber);
             Hand(grip, 0.002f, -0.042f, -0.004f, true);
-            Arm(grip, new V3(0.005f, -0.068f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
-            return m.Point(new V3(0, 0.024f, 0.35f));
+            Arm(grip, new V3(0.005f, -0.07f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            // the stub handle under the gear head, and the left hand on it
+            mb.M = m;
+            mb.Cyl(new V3(-0.006f, -0.024f, 0.086f), new V3(-0.016f, -0.088f, 0.078f), 0.011f, 0.012f, 10, Rubber, true);
+            var left = m.Mul(Mat.Translate(-0.014f, -0.06f, 0.07f)).Mul(Mat.RotY(0.5f));
+            Hand(left, 0, 0, 0, false);
+            Arm(m, new V3(-0.02f, -0.09f, 0.05f), new V3(-0.1f, -0.16f, -0.06f));
+
+            // the guard: a curved band over the top and back of the blade, a yellow lip along its edge, a plate on the body side
+            var head = m.Mul(Mat.Translate(hub.X, hub.Y, hub.Z));
+            mb.M = head;
+            const float g0 = 0.72f, g1 = 3.75f;
+            mb.Band(0.003f, 0, 0, R + 0.004f, R + 0.013f, g0, g1, 0.013f, 14, GuardGrey);
+            mb.Band(-0.011f, 0, 0, R + 0.01f, R + 0.0145f, g0, g1, 0.0016f, 14, ToolYellow);
+            mb.Band(0.0145f, 0, 0, 0.018f, R + 0.013f, g0, g1, 0.0015f, 10, Col.Scale(GuardGrey, 0.8f));
+            // the blade itself, turning with the motor: a steel disc, a darker hub, cooling slots, a hex nut, and the teeth
+            var blade = head.Mul(Mat.RotX(-sawSpin));
+            mb.M = blade;
+            bool blur = p.SawRev > 0.7f;
+            mb.Cyl(new V3(-0.0025f, 0, 0), new V3(0.0025f, 0, 0), R, R, 28, blur ? Col.Scale(BladeSteel, 1.1f) : BladeSteel, true);
+            mb.Cyl(new V3(-0.003f, 0, 0), new V3(0.003f, 0, 0), 0.028f, 0.028f, 16, Col.Scale(BladeSteel, 0.72f), true);
+            mb.Cyl(new V3(-0.003f, 0, 0), new V3(-0.011f, 0, 0), 0.011f, 0.011f, 6, Col.Rgb(70, 72, 78), true);
+            for (int k = 0; k < 6; k++)
+            {
+                mb.M = blade.Mul(Mat.RotX(k * (float)Math.PI / 3));
+                mb.Box(-0.0027f, 0, 0.05f, 0.0006f, 0.0022f, 0.013f, Col.Scale(BladeSteel, 0.55f));
+            }
+            // teeth: hooked, and smeared into a pale ring once the blade is really moving
+            for (int k = 0; k < 24; k++)
+            {
+                mb.M = blade.Mul(Mat.RotX(k * (float)Math.PI / 12));
+                mb.Slab(0, 0.0034f, new[] { 0f, R - 0.004f, 0.012f, R - 0.002f, 0.003f, R + 0.011f }, blur ? Col.Rgb(220, 222, 226) : Col.Rgb(238, 238, 232));
+            }
+            if (blur)
+            {
+                mb.M = head;
+                mb.Band(0, 0, 0, R - 0.003f, R + 0.009f, -2.6f, 0.72f, 0.0022f, 12, Col.Rgb(206, 210, 216));
+            }
+            // sparks off the front edge while it is biting into something
+            if (p.SawBite > 0)
+            {
+                int frame = (int)(time * 30);
+                for (int k = 0; k < 14; k++)
+                {
+                    float r1 = Noise.Hashf(k, frame, 71), r2 = Noise.Hashf(k, frame, 72), r3 = Noise.Hashf(k, frame, 73);
+                    float a = -0.55f + (r1 - 0.5f) * 0.5f;
+                    float along = r2 * 0.14f;
+                    var at = new V3(0.004f * (r3 - 0.5f), (float)Math.Sin(a) * R, (float)Math.Cos(a) * R);
+                    var dir = new V3((r3 - 0.5f) * 0.6f, -0.55f - r1 * 0.4f, -0.9f + r2 * 0.3f).Norm();
+                    var sp = at + dir * along;
+                    mb.M = head;
+                    int col = Col.Lerp(Col.Rgb(255, 250, 210), Col.Rgb(255, 130, 30), r2);
+                    mb.Box(sp.X, sp.Y, sp.Z, 0.0016f, 0.0016f, 0.0016f + along * 0.04f, col, true);
+                }
+            }
+            return head.Point(new V3(0, 0, R));
         }
 
-        /// <summary>The laser ray: bulkier, with a horizontal emitter bar instead of a single lens.</summary>
-        static V3 BuildLaserRay(Mat m, float t)
+        // ------------------------------------------------------------------ the double barrel
+
+        static readonly int Blued = Col.Rgb(58, 60, 72), BluedHi = Col.Rgb(96, 100, 116), WoodDark = Col.Rgb(88, 50, 24);
+        static readonly int ShellRed = Col.Rgb(176, 34, 26), Brass = Col.Rgb(206, 170, 84);
+
+        /// <summary>A shotgun shell (red hull, brass head) along +z from the local origin.</summary>
+        static void Shell(Mat m)
         {
-            float charge = Math.Min(1, t / 0.4f);
-            int glow = Col.Lerp(LaserGlow, Col.Rgb(255, 255, 255), t < 0.06f ? 1 - t / 0.06f : 0);
             mb.M = m;
-            mb.Box(0, 0.03f, -0.02f, 0.03f, 0.036f, 0.1f, LaserMetal);                             // body
-            mb.Box(0, 0.03f, 0.12f, 0.036f, 0.01f, 0.014f, Col.Scale(LaserMetal, 0.85f));          // the emitter bar, wider than it is tall
-            mb.Box(-0.032f, 0.03f, 0.12f, 0.006f, 0.014f, 0.016f, glow, true);
-            mb.Box(0.032f, 0.03f, 0.12f, 0.006f, 0.014f, 0.016f, glow, true);
-            mb.Cyl(new V3(0, 0.03f, -0.03f), new V3(0, 0.03f, 0.02f), 0.032f, 0.032f, 10, Dark, true);   // a capacitor drum on the back
-            mb.Box(0, 0.058f, -0.02f, 0.008f, 0.01f, 0.05f, Col.Lerp(Col.Scale(LaserGlow, 0.4f), LaserGlow, charge), true);   // charge glow along the top
-            var grip = m.Mul(Mat.Translate(0, -0.02f, 0.01f)).Mul(Mat.RotX(-0.24f));
+            mb.Cyl(new V3(0, 0, 0), new V3(0, 0, 0.052f), 0.0105f, 0.0105f, 8, ShellRed, true);
+            mb.Cyl(new V3(0, 0, -0.009f), new V3(0, 0, 0), 0.0112f, 0.0112f, 8, Brass, true);
+        }
+
+        /// <summary>
+        /// The double barrel: short, sawn-off side-by-side barrels over a chunky wooden fore-end, a blued action with twin
+        /// hammers, and a wooden stock. After each shot it is broken open - the barrels swing down on the hinge, the spent
+        /// shells flick out past your face, the left hand fetches two more and thumbs them in, and the action snaps shut.
+        /// </summary>
+        static V3 BuildDoubleShotgun(Mat m, float t, int shots)
+        {
+            m = m.Mul(Mat.RotZ(0.3f));   // canted a little, so both barrels show side by side
+            // the reload, as a few overlapping phases
+            float open = 0.6f * Seg(t, 0.22f, 0.38f) * (1 - Seg(t, 0.9f, 0.98f));
+            if (t > 0.98f && t < 1.1f) open = -0.04f * (float)Math.Sin((t - 0.98f) / 0.12f * Math.PI);   // the snap shut rattles
+            float tip = Seg(t, 0.2f, 0.4f) * (1 - Seg(t, 0.95f, 1.12f));                                 // the whole gun tipped to show the breech
+            var g = m.Mul(Mat.Translate(0, 0, 0.1f)).Mul(Mat.RotX(-0.22f * tip)).Mul(Mat.RotZ(0.2f * tip)).Mul(Mat.Translate(-0.01f * tip, 0.02f * tip, -0.1f));
+            var hinge = new V3(0, 0.012f, 0.088f);
+            var bar = g.Mul(Mat.Translate(hinge.X, hinge.Y, hinge.Z)).Mul(Mat.RotX(-open)).Mul(Mat.Translate(-hinge.X, -hinge.Y, -hinge.Z));
+
+            // the action: blued steel, twin hammer spurs, the top lever, two triggers in their guard
+            mb.M = g;
+            mb.Box(0, 0.026f, 0.04f, 0.028f, 0.022f, 0.049f, Blued);
+            mb.Box(0, 0.049f, 0.02f, 0.006f, 0.0022f, 0.03f, BluedHi);                                            // top strap
+            mb.Box(0.002f + 0.012f * tip, 0.05f, -0.006f, 0.004f, 0.003f, 0.014f, BluedHi);                        // top lever, pushed aside to open
+            for (int k = -1; k <= 1; k += 2)
+            {
+                var hm = g.Mul(Mat.Translate(k * 0.013f, 0.046f, -0.004f)).Mul(Mat.RotX(0.6f));
+                mb.M = hm;
+                mb.Box(0, 0.006f, 0, 0.004f, 0.009f, 0.004f, Col.Scale(Blued, 0.8f));
+                mb.Box(0, 0.014f, -0.004f, 0.0045f, 0.002f, 0.006f, BluedHi);
+            }
+            mb.M = g;
+            mb.Box(0, -0.004f, 0.03f, 0.004f, 0.002f, 0.028f, Blued);                                             // trigger guard
+            mb.Box(0, 0.002f, 0.004f, 0.004f, 0.009f, 0.002f, Blued);
+            mb.Box(0.004f, 0.004f, 0.03f, 0.0015f, 0.008f, 0.002f, BluedHi);
+            mb.Box(-0.004f, 0.004f, 0.018f, 0.0015f, 0.008f, 0.002f, BluedHi);
+            // the stock: a wooden wrist curving down into a pistol grip (the butt is behind the hand, out of view)
+            mb.Slab(0, 0.016f, new[] { 0.034f, -0.008f, 0.03f, -0.05f, -0.012f, -0.078f, -0.036f, -0.062f, -0.026f, -0.03f, 0.004f, -0.008f }, Wood);
+            var grip = g.Mul(Mat.Translate(0, -0.01f, -0.048f)).Mul(Mat.RotX(-0.55f));
+            Hand(grip, 0.002f, -0.024f, -0.004f, true);
+            Arm(grip, new V3(0.006f, -0.052f, -0.04f), new V3(0.05f, -0.15f, -0.18f));
+
+            // the barrels, on the hinge: two tubes, a rib above and below, bores, the bead, the wooden fore-end
+            mb.M = bar;
+            for (int k = -1; k <= 1; k += 2)
+            {
+                float bx = k * 0.0132f;
+                mb.Cyl(new V3(bx, 0.034f, 0.088f), new V3(bx, 0.034f, 0.39f), 0.0128f, 0.0125f, 14, Col.Rgb(84, 86, 98), false);
+                mb.Cyl(new V3(bx, 0.034f, 0.385f), new V3(bx, 0.034f, 0.402f), 0.0136f, 0.0136f, 14, BluedHi, false);
+                mb.Cyl(new V3(bx, 0.034f, 0.4015f), new V3(bx, 0.034f, 0.4025f), 0.0085f, 0.0085f, 10, Black, true);
+                mb.Cyl(new V3(bx, 0.034f, 0.0875f), new V3(bx, 0.034f, 0.0885f), 0.0128f, 0.0128f, 12, Blued, true);   // breech face
+                mb.Cyl(new V3(bx, 0.034f, 0.086f), new V3(bx, 0.034f, 0.0892f), 0.0086f, 0.0086f, 10, Black, true);   // chamber
+            }
+            mb.Box(0, 0.048f, 0.24f, 0.0055f, 0.0035f, 0.15f, Blued);                                              // top rib
+            mb.Box(0, 0.02f, 0.3f, 0.0055f, 0.004f, 0.09f, Blued);                                                // bottom rib
+            mb.Box(0, 0.053f, 0.392f, 0.0018f, 0.002f, 0.002f, Col.Rgb(236, 226, 180));                          // bead
+            mb.Box(0, 0.011f, 0.19f, 0.024f, 0.013f, 0.085f, Wood);                                               // fore-end
+            mb.Cyl(new V3(0, 0.004f, 0.11f), new V3(0, 0.004f, 0.27f), 0.019f, 0.017f, 10, WoodDark, true);
+            mb.Box(0, 0.002f, 0.275f, 0.012f, 0.006f, 0.006f, Blued);                                             // fore-end latch
+            // brass in the chambers: the spent pair until they're flicked out, the fresh pair once they're pushed home
+            bool spent = t < 0.4f, fresh = t > 0.86f;
+            if (spent || fresh)
+                for (int k = -1; k <= 1; k += 2)
+                {
+                    if (spent && shots < 2 && k > 0) continue;
+                    mb.Cyl(new V3(k * 0.0132f, 0.034f, 0.0835f), new V3(k * 0.0132f, 0.034f, 0.0875f), 0.0112f, 0.0112f, 10, Brass, true);
+                }
+            dsgMuzzleL = bar.Point(new V3(-0.0132f, 0.034f, 0.41f));
+            dsgMuzzleR = bar.Point(new V3(0.0132f, 0.034f, 0.41f));
+
+            // the spent shells flying out past your face
+            if (t > 0.4f && t < 0.8f)
+                for (int k = 0; k < Math.Max(1, shots); k++)
+                {
+                    float tau = t - 0.4f - k * 0.025f;
+                    if (tau < 0) continue;
+                    float side = k == 0 ? -1 : 1;
+                    var at = new V3(side * 0.02f + side * 0.16f * tau, 0.05f + 0.45f * tau - 1.9f * tau * tau, 0.07f - 0.22f * tau);
+                    Shell(g.Mul(Mat.Translate(at.X, at.Y, at.Z)).Mul(Mat.RotX(0.8f + tau * 16)).Mul(Mat.RotY(side * tau * 6)));
+                }
+
+            // the left hand: on the fore-end, then down out of sight, back with two shells, thumbing them in, and back again
+            var onFore = bar.Mul(Mat.Translate(-0.004f, -0.006f, 0.21f)).Mul(Mat.RotZ(0.6f));
+            var breech = bar.Mul(Mat.Translate(0.0f, 0.034f, 0.088f));
+            Mat lh;
+            bool holding = false;
+            float push = 0;
+            if (t < 0.46f || t > 1.08f) lh = onFore;
+            else if (t < 0.6f) lh = Blend(onFore, g.Mul(Mat.Translate(0.03f, -0.24f, 0.12f)), Seg(t, 0.46f, 0.6f));
+            else if (t < 0.76f) { lh = Blend(g.Mul(Mat.Translate(0.03f, -0.24f, 0.12f)), breech.Mul(Mat.Translate(0, -0.018f, -0.07f)), Seg(t, 0.6f, 0.76f)); holding = true; }
+            else if (t < 0.9f) { push = Seg(t, 0.78f, 0.86f); lh = breech.Mul(Mat.Translate(0, -0.018f, -0.07f + 0.05f * push)); holding = push < 1; }
+            else lh = Blend(breech.Mul(Mat.Translate(0, -0.018f, -0.02f)), onFore, Seg(t, 0.9f, 1.08f));
+            mb.M = lh;
+            mb.Box(0, -0.012f, 0, 0.02f, 0.016f, 0.034f, Glove);
+            for (int k = 0; k < 4; k++) mb.Ball(0.021f, -0.004f, -0.022f + k * 0.015f, 0.008f, 0.012f, 0.0075f, Col.Scale(Glove, 1.04f));
+            if (holding)
+                for (int k = -1; k <= 1; k += 2) Shell(lh.Mul(Mat.Translate(k * 0.0132f, 0.018f, 0.03f)));
+            // the forearm hangs from the wrist toward the lower left of the view, wherever the hand has got to
+            var wrist = lh.Point(new V3(-0.01f, -0.024f, -0.02f));
+            LeftArm(wrist, wrist + new V3(-0.03f, -0.1f, -0.03f));
+            return bar.Point(new V3(0, 0.034f, 0.41f));
+        }
+
+        /// <summary>A left forearm given in camera space: sleeve from the wrist to the elbow, then almost straight down out of
+        /// the view. Used when the hand is moving about and a frame-relative elbow would swing through the camera.</summary>
+        static void LeftArm(V3 wrist, V3 elbow)
+        {
+            mb.M = Mat.Identity;
+            V3 dir = (elbow - wrist).Norm();
+            mb.Cyl(wrist - dir * 0.01f, wrist + dir * 0.03f, 0.026f, 0.027f, 8, Col.Scale(Glove, 0.8f), false);
+            mb.Cyl(wrist + dir * 0.03f, elbow, 0.029f, 0.034f, 8, Sleeve, false);
+            V3 away = new V3(-0.12f, -0.97f, -0.2f).Norm();
+            mb.Cyl(elbow, elbow + away * 0.5f, 0.034f, 0.045f, 8, Col.Scale(Sleeve, 0.85f), false);
+        }
+
+        /// <summary>Somewhere between two frames: positions blend straight, the rotations blend closely enough for a hand.</summary>
+        static Mat Blend(Mat a, Mat b, float k)
+        {
+            var r = new Mat();
+            r.A = a.A + (b.A - a.A) * k; r.B = a.B + (b.B - a.B) * k; r.C = a.C + (b.C - a.C) * k;
+            r.D = a.D + (b.D - a.D) * k; r.E = a.E + (b.E - a.E) * k; r.F = a.F + (b.F - a.F) * k;
+            r.G = a.G + (b.G - a.G) * k; r.H = a.H + (b.H - a.H) * k; r.I = a.I + (b.I - a.I) * k;
+            r.TX = a.TX + (b.TX - a.TX) * k; r.TY = a.TY + (b.TY - a.TY) * k; r.TZ = a.TZ + (b.TZ - a.TZ) * k;
+            return r;
+        }
+
+        // ------------------------------------------------------------------ the laser
+
+        static readonly int LaserWhite = Col.Rgb(218, 220, 226), LaserGrey = Col.Rgb(140, 144, 156), LaserDark = Col.Rgb(38, 40, 48);
+
+        /// <summary>
+        /// The laser: a slim white rifle. An oval body tapering into a nose, grey bands, a red light strip down each flank,
+        /// a dark spine with a red-dot sight, a finned emitter barrel ending in a red lens, a glowing cell slung underneath
+        /// in a cage, and heat vents on top at the back that go from dark to orange as it is held on. The beam itself is drawn
+        /// by DrawBeam.
+        /// </summary>
+        static V3 BuildLaser(Mat m, bool on, float time)
+        {
+            float pulse = on ? 0.75f + 0.25f * (float)Math.Sin(time * 40) : 0;
+            int strip = Col.Lerp(Col.Rgb(90, 20, 18), Col.Rgb(255, 60, 40), on ? 0.6f + 0.4f * pulse : 0.15f);
+            int lens = Col.Lerp(Col.Rgb(110, 20, 16), Col.Rgb(255, 230, 220), on ? pulse : 0.1f);
+            // the body: an oval white tube running into a tapered nose, with a rounded tail and two grey bands
+            mb.M = m.Mul(Mat.Scale(0.78f, 1f, 1f));
+            mb.Cyl(new V3(0, 0, -0.07f), new V3(0, 0, 0.11f), 0.03f, 0.03f, 16, LaserWhite, false);
+            mb.Cyl(new V3(0, 0, 0.11f), new V3(0, 0, 0.158f), 0.03f, 0.017f, 16, LaserWhite, false);
+            mb.Ball(0, 0, -0.07f, 0.03f, 0.03f, 0.022f, LaserWhite);
+            mb.Cyl(new V3(0, 0, -0.046f), new V3(0, 0, -0.036f), 0.0306f, 0.0306f, 16, LaserGrey, false);
+            mb.Cyl(new V3(0, 0, 0.074f), new V3(0, 0, 0.084f), 0.0306f, 0.0306f, 16, LaserGrey, false);
+            mb.M = m;
+            for (int k = -1; k <= 1; k += 2) mb.Box(k * 0.0237f, 0.004f, 0.018f, 0.0009f, 0.0024f, 0.05f, strip, true);
+            // the spine along the top, the red-dot sight on it, and the heat vents behind it
+            mb.Bevel(0, 0.033f, 0.02f, 0.0065f, 0.0045f, 0.075f, 0.002f, LaserDark);
+            mb.Bevel(0, 0.046f, 0.0f, 0.009f, 0.008f, 0.013f, 0.003f, LaserDark);
+            mb.Box(0, 0.047f, 0.0133f, 0.0038f, 0.0038f, 0.0005f, Col.Rgb(255, 40, 30), true);
+            int vent = Col.Lerp(Col.Rgb(34, 30, 30), Col.Rgb(255, 120, 30), laserHeat);
+            for (int k = 0; k < 3; k++) mb.Box(0.012f, 0.026f, -0.058f + k * 0.011f, 0.007f, 0.0015f, 0.0025f, vent, laserHeat > 0.05f);
+            // the emitter: a dark barrel through a grey shroud, cooling fins, the lens ring and the lens
+            mb.Cyl(new V3(0, 0, 0.15f), new V3(0, 0, 0.3f), 0.011f, 0.01f, 12, LaserDark, false);
+            mb.Cyl(new V3(0, 0, 0.148f), new V3(0, 0, 0.196f), 0.018f, 0.016f, 12, LaserGrey, false);
+            for (int k = 0; k < 5; k++)
+                mb.Cyl(new V3(0, 0, 0.206f + k * 0.018f), new V3(0, 0, 0.212f + k * 0.018f), 0.0152f, 0.0152f, 12, Col.Scale(LaserGrey, 0.85f), false);
+            mb.Cyl(new V3(0, 0, 0.295f), new V3(0, 0, 0.312f), 0.0145f, 0.013f, 12, LaserDark, false);
+            mb.Cyl(new V3(0, 0, 0.311f), new V3(0, 0, 0.313f), 0.009f, 0.009f, 12, lens, true, 0, true);
+            // the power cell slung under the body, glowing through its cage
+            int cell = Col.Lerp(Col.Rgb(120, 30, 20), Col.Rgb(255, 150, 90), on ? pulse : 0.25f);
+            mb.Box(0, -0.024f, 0.02f, 0.007f, 0.006f, 0.045f, LaserGrey);
+            mb.Cyl(new V3(0, -0.036f, -0.03f), new V3(0, -0.036f, 0.07f), 0.0105f, 0.0105f, 10, cell, false, 0, true);
+            for (int k = 0; k < 3; k++) mb.Cyl(new V3(0, -0.036f, -0.032f + k * 0.049f), new V3(0, -0.036f, -0.026f + k * 0.049f), 0.0128f, 0.0128f, 10, LaserGrey, true);
+            // the grip and the trigger hand
+            var grip = m.Mul(Mat.Translate(0, -0.03f, -0.045f)).Mul(Mat.RotX(-0.3f));
             mb.M = grip;
-            mb.Box(0, -0.034f, 0, 0.014f, 0.034f, 0.02f, Dark);
+            mb.Bevel(0, -0.034f, 0, 0.012f, 0.036f, 0.018f, 0.005f, LaserDark);
             Hand(grip, 0.002f, -0.04f, -0.004f, true);
-            Arm(grip, new V3(0.005f, -0.065f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
-            var left = m.Mul(Mat.Translate(-0.01f, -0.01f, 0.05f)).Mul(Mat.RotZ(0.6f));
+            Arm(grip, new V3(0.005f, -0.066f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            // the support hand under the nose
+            var left = m.Mul(Mat.Translate(-0.004f, -0.03f, 0.13f)).Mul(Mat.RotZ(0.6f));
             mb.M = left;
-            mb.Box(0, -0.012f, 0, 0.018f, 0.015f, 0.03f, Glove);
-            Arm(m, new V3(-0.022f, -0.025f, 0.04f), new V3(-0.1f, -0.1f, -0.02f));
-            return m.Point(new V3(0, 0.03f, 0.13f));
+            mb.Box(0, -0.012f, 0, 0.019f, 0.015f, 0.032f, Glove);
+            for (int k = 0; k < 4; k++) mb.Ball(0.021f, -0.004f, -0.021f + k * 0.014f, 0.008f, 0.011f, 0.007f, Col.Scale(Glove, 1.04f));
+            Arm(m, new V3(-0.02f, -0.046f, 0.12f), new V3(-0.1f, -0.12f, -0.02f));
+            return m.Point(new V3(0, 0, 0.314f));
         }
 
-        /// <summary>The double barrel shotgun: side-by-side barrels, a break action, and a heavier stock.</summary>
-        static V3 BuildDoubleShotgun(Mat m, float t)
+        // ------------------------------------------------------------------ the laser ray
+
+        static readonly int RayMetal = Col.Rgb(78, 86, 102), RayDark = Col.Rgb(36, 40, 50);
+
+        /// <summary>
+        /// The laser ray: a heavy gunmetal projector whose business end is a flat fan - a plate spreading out sideways from the
+        /// front of the body, its curved front edge the emitter. A capacitor tube runs along each flank with four rings that
+        /// light one by one as it charges, electricity crawls along the fan's edge while it winds up, and when it fires the
+        /// edge goes white-hot and cools back to blue.
+        /// </summary>
+        static V3 BuildLaserRay(Mat m, float t, float charge, float time)
         {
-            float breakOpen = t > 0.5f && t < 0.85f ? 0.25f * (float)Math.Sin(Math.PI * (t - 0.5f) / 0.35f) : 0;
+            float after = t < 0.6f ? 1 - t / 0.6f : 0;                 // the heat left in it after a shot
+            int dim = Col.Rgb(22, 52, 92), lit = Col.Rgb(70, 200, 255), hot = Col.Rgb(235, 250, 255);
+            int edge = Col.Lerp(Col.Lerp(dim, lit, 0.55f + 0.45f * charge), hot, Math.Max(after, charge * charge * 0.7f));
             mb.M = m;
-            mb.Box(0, 0.02f, 0.02f, 0.022f, 0.028f, 0.07f, Dark);                                  // receiver
-            var barrels = m.Mul(Mat.Translate(0, 0.035f, 0.09f)).Mul(Mat.RotX(breakOpen));
-            mb.M = barrels;
-            mb.Cyl(new V3(-0.013f, 0, 0), new V3(-0.013f, 0, 0.42f), 0.012f, 0.012f, 10, Metal, true);
-            mb.Cyl(new V3(0.013f, 0, 0), new V3(0.013f, 0, 0.42f), 0.012f, 0.012f, 10, Metal, true);
-            mb.Box(0, -0.002f, 0.2f, 0.02f, 0.006f, 0.16f, Col.Scale(Metal, 0.85f));                // rib between the barrels
-            mb.Box(-0.013f, 0, 0.4205f, 0.007f, 0.007f, 0.0008f, Black);
-            mb.Box(0.013f, 0, 0.4205f, 0.007f, 0.007f, 0.0008f, Black);
-            mb.Box(0, 0.014f, 0.41f, 0.002f, 0.0025f, 0.002f, Col.Rgb(230, 220, 170));              // bead sight
+            // the body: a bevelled gunmetal housing and a dark rail along its top
+            mb.Bevel(0, 0.0f, -0.01f, 0.026f, 0.028f, 0.075f, 0.01f, RayMetal);
+            mb.Bevel(0, 0.032f, -0.02f, 0.011f, 0.006f, 0.05f, 0.003f, RayDark);
+            // the capacitor tubes along both flanks, each with four charge rings
+            for (int side = -1; side <= 1; side += 2)
+            {
+                mb.Cyl(new V3(side * 0.032f, 0.004f, -0.07f), new V3(side * 0.032f, 0.004f, 0.058f), 0.012f, 0.012f, 10, RayDark, true);
+                for (int k = 0; k < 4; k++)
+                {
+                    bool on = charge * 4 > k + 0.2f || after > 0.2f;
+                    int ring = after > 0 ? Col.Lerp(lit, hot, after) : on ? Col.Lerp(lit, hot, 0.3f + 0.3f * (float)Math.Sin(time * 30 + k)) : dim;
+                    mb.Cyl(new V3(side * 0.032f, 0.004f, -0.054f + k * 0.03f), new V3(side * 0.032f, 0.004f, -0.045f + k * 0.03f),
+                        0.0128f, 0.0128f, 10, ring, false, 0, on || after > 0);
+                }
+            }
+            // the emitter: a curved bar across the front of the gun, bowed forward like the arc it throws, on two struts.
+            // Its front face and top edge are the emitter strip, and electricity crawls along it while it charges
+            const float Ra = 0.15f, Span = 0.6f, Cz = -0.045f;
+            const int N = 12;
             mb.M = m;
-            var stock = m.Mul(Mat.Translate(0, 0.006f, -0.05f)).Mul(Mat.RotX(-0.2f));
-            mb.M = stock;
-            mb.Box(0, -0.022f, -0.02f, 0.016f, 0.032f, 0.032f, Wood);                              // pistol grip / wrist, heavier than the pump gun's
-            Hand(stock, 0.002f, -0.032f, -0.01f, true);
-            Arm(stock, new V3(0.006f, -0.058f, -0.04f), new V3(0.05f, -0.15f, -0.18f));
-            var left = m.Mul(Mat.Translate(-0.004f, 0.01f, 0.24f)).Mul(Mat.RotZ(0.6f));
+            mb.Cyl(new V3(0, 0.0f, 0.06f), new V3(0, 0.0f, 0.1f), 0.018f, 0.014f, 12, RayDark, false);
+            for (int k = -1; k <= 1; k += 2)
+                mb.Cyl(new V3(k * 0.02f, 0.0f, 0.055f), new V3((float)Math.Sin(k * Span * 0.7f) * Ra, 0.0f, Cz + (float)Math.Cos(Span * 0.7f) * Ra), 0.006f, 0.006f, 8, RayDark, false);
+            for (int i = 0; i < N; i++)
+            {
+                float a = -Span + 2 * Span * (i + 0.5f) / N;
+                float half = Ra * Span / N + 0.0008f;
+                mb.M = m.Mul(Mat.Translate(0, 0, Cz)).Mul(Mat.RotY(a));
+                mb.Bevel(0, 0, Ra, half, 0.016f, 0.009f, 0.004f, RayMetal);
+                mb.Box(0, 0, Ra + 0.0092f, half, 0.009f, 0.0012f, edge, true);                           // the emitter face
+                mb.Box(0, 0.0162f, Ra + 0.002f, half, 0.0014f, 0.006f, edge, true);   // the glowing top edge
+            }
+            for (int k = -1; k <= 1; k += 2)
+            {
+                mb.M = m.Mul(Mat.Translate(0, 0, Cz)).Mul(Mat.RotY(k * (Span + 0.03f)));
+                mb.Bevel(0, 0, Ra, 0.006f, 0.018f, 0.012f, 0.004f, RayDark);                                    // end caps
+            }
+            if (charge > 0.05f)
+            {
+                int frame = (int)(time * 24);
+                int bolts = 1 + (int)(charge * 5);
+                for (int b = 0; b < bolts; b++)
+                {
+                    float a = -Span + 2 * Span * Noise.Hashf(b, frame, 91);
+                    float step = (0.1f + 0.25f * Noise.Hashf(b, frame, 92)) / 4;
+                    float pa = a, py = 0.016f;
+                    for (int s = 1; s <= 4; s++)
+                    {
+                        float na = Math.Max(-Span, Math.Min(Span, a + step * s));
+                        float ny = 0.016f + Noise.Hashf(b * 7 + s, frame, 93) * 0.016f;
+                        float r = Ra + (Noise.Hashf(b * 7 + s, frame, 94) - 0.5f) * 0.012f;
+                        var p0 = new V3((float)Math.Sin(pa) * r, py, Cz + (float)Math.Cos(pa) * r);
+                        var p1 = new V3((float)Math.Sin(na) * r, ny, Cz + (float)Math.Cos(na) * r);
+                        var mid = (p0 + p1) * 0.5f;
+                        mb.M = m;
+                        mb.Box(mid.X, mid.Y, mid.Z, Math.Abs(p1.X - p0.X) * 0.5f + 0.0009f, Math.Abs(p1.Y - p0.Y) * 0.5f + 0.0009f,
+                            Math.Abs(p1.Z - p0.Z) * 0.5f + 0.0009f, Col.Lerp(lit, hot, 0.7f), true);
+                        pa = na; py = ny;
+                    }
+                }
+            }
+            // grip, trigger hand, and the support hand under the body
+            var grip = m.Mul(Mat.Translate(0, -0.024f, -0.045f)).Mul(Mat.RotX(-0.3f));
+            mb.M = grip;
+            mb.Bevel(0, -0.034f, 0, 0.013f, 0.037f, 0.019f, 0.005f, RayDark);
+            Hand(grip, 0.002f, -0.04f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.068f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            var left = m.Mul(Mat.Translate(-0.012f, -0.034f, 0.035f)).Mul(Mat.RotZ(0.5f));
             mb.M = left;
-            mb.Box(0, -0.012f, 0, 0.02f, 0.016f, 0.036f, Glove);
-            for (int k = 0; k < 4; k++) mb.Ball(0.022f, -0.004f, -0.024f + k * 0.016f, 0.008f, 0.012f, 0.0075f, Col.Scale(Glove, 1.04f));
-            Arm(m, new V3(-0.02f, -0.02f, 0.22f), new V3(-0.1f, -0.1f, 0.08f));
-            return m.Point(new V3(0, 0.035f, 0.51f));
+            mb.Box(0, -0.012f, 0, 0.02f, 0.016f, 0.034f, Glove);
+            for (int k = 0; k < 4; k++) mb.Ball(0.022f, -0.004f, -0.022f + k * 0.015f, 0.008f, 0.012f, 0.0075f, Col.Scale(Glove, 1.04f));
+            Arm(m, new V3(-0.028f, -0.05f, 0.025f), new V3(-0.1f, -0.12f, -0.08f));
+            return m.Point(new V3(0, 0, Cz + Ra + 0.01f));
         }
+
+        // ------------------------------------------------------------------ the grenade launcher
+
+        static readonly int GlBlack = Col.Rgb(36, 38, 36), GlOlive = Col.Rgb(90, 102, 64), GlOliveDark = Col.Rgb(54, 62, 40);
+
+        /// <summary>
+        /// The grenade launcher: a six-shot revolver launcher. A short, fat ribbed barrel over a big fluted olive drum with a
+        /// grenade's brass nose in each loaded chamber, a top strap, a pistol grip, a vertical fore-grip and a folding stock.
+        /// After each shot the drum clicks round a sixth of a turn to bring the next grenade under the barrel.
+        /// </summary>
+        static V3 BuildGrenadeLauncher(Mat m, float t, int ammo)
+        {
+            m = m.Mul(Mat.RotX(-0.07f));
+            const float BarrelY = 0.038f, ChamberR = 0.036f;
+            float turn = Seg(t, 0.22f, 0.4f);
+            float drum = ((ammo % 6) + (1 - turn)) * (float)Math.PI / 3;
+            mb.M = m;
+            // the barrel: fat and short, ribbed, with a muzzle ring and a flip-up ladder sight
+            mb.Cyl(new V3(0, BarrelY, 0.1f), new V3(0, BarrelY, 0.31f), 0.026f, 0.026f, 16, GlBlack, false);
+            for (int k = 0; k < 3; k++)
+                mb.Cyl(new V3(0, BarrelY, 0.135f + k * 0.045f), new V3(0, BarrelY, 0.146f + k * 0.045f), 0.0278f, 0.0278f, 16, Col.Scale(GlBlack, 1.6f), false);
+            mb.Cyl(new V3(0, BarrelY, 0.304f), new V3(0, BarrelY, 0.325f), 0.03f, 0.03f, 16, Col.Scale(GlBlack, 1.35f), false);
+            mb.Cyl(new V3(0, BarrelY, 0.3245f), new V3(0, BarrelY, 0.3255f), 0.02f, 0.02f, 14, Black, true);
+            mb.Box(0, BarrelY + 0.03f, 0.19f, 0.009f, 0.004f, 0.008f, GlBlack);
+            mb.Box(0, BarrelY + 0.041f, 0.19f, 0.007f, 0.008f, 0.0015f, GlBlack);
+            // the frame: a strap over the drum, the drum's axle block, and a bevelled rear frame
+            mb.Bevel(0, 0.068f, 0.035f, 0.01f, 0.005f, 0.08f, 0.003f, GlBlack);
+            mb.Bevel(0, 0.012f, -0.052f, 0.019f, 0.04f, 0.022f, 0.01f, GlBlack);
+            mb.Box(0, 0.0f, 0.1f, 0.011f, 0.011f, 0.012f, GlBlack);
+            // the drum, turning: olive steel, fluted between the chambers, a grenade nose in each loaded chamber
+            var dm = m.Mul(Mat.RotZ(drum));
+            mb.M = dm;
+            mb.Cyl(new V3(0, 0, -0.03f), new V3(0, 0, 0.094f), 0.054f, 0.054f, 18, GlOlive, true);
+            mb.Cyl(new V3(0, 0, -0.024f), new V3(0, 0, -0.018f), 0.0555f, 0.0555f, 18, GlOliveDark, false);
+            mb.Cyl(new V3(0, 0, 0.082f), new V3(0, 0, 0.088f), 0.0555f, 0.0555f, 18, GlOliveDark, false);
+            int loaded = Math.Min(6, ammo + (turn < 1 ? 1 : 0));
+            for (int k = 0; k < 6; k++)
+            {
+                mb.M = dm.Mul(Mat.RotZ(k * (float)Math.PI / 3));
+                mb.Box(0, 0.054f, 0.032f, 0.006f, 0.003f, 0.05f, GlOliveDark);                                        // a flute
+                mb.M = dm.Mul(Mat.RotZ(k * (float)Math.PI / 3 + (float)Math.PI / 6));
+                mb.Cyl(new V3(0, ChamberR, 0.0935f), new V3(0, ChamberR, 0.0955f), 0.014f, 0.014f, 10, Black, true);
+                if (k < loaded) mb.Ball(0, ChamberR, 0.0915f, 0.011f, 0.011f, 0.007f, Col.Rgb(190, 156, 72));
+            }
+            // pistol grip and trigger hand
+            var grip = m.Mul(Mat.Translate(0, -0.03f, -0.06f)).Mul(Mat.RotX(-0.3f));
+            mb.M = grip;
+            mb.Bevel(0, -0.034f, 0, 0.012f, 0.036f, 0.019f, 0.005f, GlBlack);
+            Hand(grip, 0.002f, -0.04f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.066f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            // the folding stock: two struts running back out of view
+            mb.M = m;
+            mb.Cyl(new V3(0.012f, 0.034f, -0.07f), new V3(0.014f, 0.036f, -0.28f), 0.0045f, 0.0045f, 6, GlBlack, false);
+            mb.Cyl(new V3(0.012f, -0.012f, -0.07f), new V3(0.014f, -0.02f, -0.28f), 0.0045f, 0.0045f, 6, GlBlack, false);
+            // the vertical fore-grip under the barrel, and the left hand round it
+            mb.Bevel(0, 0.006f, 0.22f, 0.009f, 0.006f, 0.05f, 0.002f, GlBlack);
+            mb.Cyl(new V3(0, 0.0f, 0.23f), new V3(0, -0.07f, 0.215f), 0.012f, 0.013f, 10, GlBlack, true);
+            var left = m.Mul(Mat.Translate(-0.004f, -0.036f, 0.21f)).Mul(Mat.RotY(0.35f));
+            Hand(left, 0, 0, 0, false);
+            Arm(m, new V3(-0.012f, -0.064f, 0.19f), new V3(-0.1f, -0.15f, 0.02f));
+            return m.Point(new V3(0, BarrelY, 0.33f));
+        }
+
 
         /// <summary>The ray gun: a spine of bone and sinew with something burning caged inside it.</summary>
         static V3 BuildRayGun(Mat m, float t, float time, float charge)
@@ -726,7 +1179,7 @@ namespace TerminalHell
             }
         }
 
-        static void FlashGlow(Screen s, int W, int H, float mx, float my, float r, float aspect, float time)
+        static void FlashGlow(Screen s, int W, int H, float mx, float my, float r, float aspect, float time, int hot, int fire)
         {
             float ry = r * aspect;
             int x0 = (int)(mx - r * 1.8f), x1 = (int)(mx + r * 1.8f), y0 = (int)(my - ry * 1.8f), y1 = (int)(my + ry * 1.8f);
@@ -740,7 +1193,7 @@ namespace TerminalHell
                     float star = 0.75f + 0.45f * (float)Math.Abs(Math.Cos(ang * 2.5));
                     float k = 1 - d / (1.6f * star);
                     if (k <= 0) continue;
-                    int c = Col.Lerp(Col.Rgb(255, 110, 20), Col.Rgb(255, 250, 215), Math.Min(1, k * 1.6f));
+                    int c = Col.Lerp(fire, hot, Math.Min(1, k * 1.6f));
                     int i = y * W + x;
                     s.Pix[i] = Col.Lerp(s.Pix[i], c, Math.Min(1, k * 2.2f));
                 }

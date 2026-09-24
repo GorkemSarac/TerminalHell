@@ -68,24 +68,39 @@ namespace TerminalHell
             TotalKills += 4;
         }
 
-        /// <summary>The five alternate weapons (the saw, the double barrel, the laser pair, the grenade launcher)
-        /// share the digits used by the wall textures, so - like the tower's bat demons - they don't get a map
-        /// character of their own. Each one is dropped once, by level id, spread across the campaign.</summary>
+        /// <summary>Where one of the alternate weapons is found.</summary>
+        public sealed class BonusWeapon
+        {
+            public string Level;
+            public char Code;
+            public float X, Y;
+            public string Where;
+            public BonusWeapon(string level, char code, float x, float y, string where) { Level = level; Code = code; X = x; Y = y; Where = where; }
+        }
+
+        /// <summary>
+        /// The five alternate weapons (the saw, the double barrel, the laser pair, the grenade launcher) use the digits the
+        /// wall textures also use, so - like the tower's bat demons - they don't get a map character of their own. Each one
+        /// is placed here, once, by level id, on a pedestal in a room built for it; each is always found after the weapon
+        /// that shares its slot (--dev-arsenal checks that, and that every one of them can be reached).
+        /// </summary>
+        public static readonly BonusWeapon[] BonusWeapons =
+        {
+            new BonusWeapon("E1M2", '5', 31.5f, 26.5f, "the maintenance workshop through the old fuel depot door, south of the runway"),
+            new BonusWeapon("E1M3", '6', 94.5f, 3.5f, "the security armory off the last stretch of corridor before the boss"),
+            new BonusWeapon("E2M1", '7', 53.5f, 15.5f, "the research wing through the cut in the cliff, east side of the courtyard"),
+            new BonusWeapon("E2M2", '8', 47.5f, 17.5f, "the prototype vault behind the blue-key room, on a platform in a slime moat"),
+            new BonusWeapon("E2M3", '9', 21.5f, 18.5f, "the armory between the red door and the Warden's arena"),
+        };
+
         void SpawnBonusWeapon()
         {
-            char c;
-            float x, y;
-            switch (Def.Id)
+            foreach (var b in BonusWeapons)
             {
-                case "E1M1": c = '5'; x = 23.5f; y = 19.5f; break;   // TERMINAL: the saw, alongside the fists you start with
-                case "E1M2": c = '6'; x = 6.5f; y = 4.5f; break;     // RUNWAY: the double barrel, ahead of the pump gun
-                case "E1M3": c = '7'; x = 5.5f; y = 8.5f; break;     // TOWER: the laser
-                case "E2M1": c = '8'; x = 7.5f; y = 3.5f; break;     // OUTPOST OF HELL: the laser ray
-                case "E2M2": c = '9'; x = 14.5f; y = 3.5f; break;    // HELL LABS: the grenade launcher
-                default: return;
+                if (b.Level != Def.Id) continue;
+                SpawnItem(b.Code, b.X, b.Y, false);
+                TotalItems++;
             }
-            SpawnItem(c, x, y, false);
-            TotalItems++;
         }
 
         void SpawnThing(char c, int x, int y)
@@ -775,24 +790,23 @@ namespace TerminalHell
             }
             if (d.Grenade)
             {
-                // lobbed up and out, not fired flat: it needs an arc to bounce along
-                const float speed = 11;
-                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.GRENADE);
+                // lobbed along the look direction with a little lift, so it drops in a low arc and skips along the floor
+                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, Projectile.GrenadeSpeed, Projectile.GRENADE);
                 pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
-                pr.SplashDamage = 110; pr.SplashRadius = 2.4f;
-                pr.Fuse = 2.2f;
-                pr.Z = p.EyeZ - 0.1f;
-                pr.VZ = 3.2f + p.AimSlope * speed;
+                pr.SplashDamage = 115; pr.SplashRadius = 2.4f;
+                pr.Fuse = 2.5f;
+                pr.Z = p.EyeZ - 0.13f;
+                pr.VZ = Projectile.GrenadeLift + p.AimSlope * Projectile.GrenadeSpeed;
                 Add(pr);
                 return;
             }
-            if (d.LineHit)
+            if (d.Knockback > 0)
             {
-                // the horizontal laser ray: pierces straight through, hitting everything along the line at once
-                LaserLine(p.X, p.Y, p.EyeZ, p.Angle, p.AimSlope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p);
-                return;
+                // the double barrel shoves you back - half as hard if only one barrel had a shell in it
+                float k = d.Knockback * shots / Math.Max(1, d.Barrels);
+                p.VX -= dx * k; p.VY -= dy * k;
+                p.ShakeAmt = Math.Min(1, p.ShakeAmt + 0.4f * shots / Math.Max(1, d.Barrels));
             }
-            if (d.Knockback > 0) { p.VX -= dx * d.Knockback; p.VY -= dy * d.Knockback; }
             float spread = d.Pellets > 1 ? d.Spread : (refire > 0 ? d.Spread : d.Spread * 0.25f);
             int pellets = d.Pellets * Math.Max(1, shots);
             for (int i = 0; i < pellets; i++)
@@ -803,46 +817,19 @@ namespace TerminalHell
             }
         }
 
-        /// <summary>The laser ray's shot: a beam that doesn't stop at the first body - it damages every enemy
-        /// along the line before it reaches the wall.</summary>
-        void LaserLine(float x, float y, float z, float ang, float slope, float range, int dmg, Actor source)
-        {
-            float dx = (float)Math.Cos(ang), dy = (float)Math.Sin(ang);
-            float wall = Map.RayCast(x, y, dx, dy, range);
-            foreach (var a in Actors)
-            {
-                if (!a.Shootable || a == source) continue;
-                float ox = a.X - x, oy = a.Y - y;
-                float t = ox * dx + oy * dy;
-                if (t <= 0 || t > wall + a.Radius) continue;
-                float perp2 = ox * ox + oy * oy - t * t;
-                float r = a.Radius + 0.08f;
-                if (perp2 > r * r) continue;
-                float zt = z + slope * t;
-                if (zt < a.Z - 0.1f || zt > a.Z + a.Height + 0.1f) continue;
-                a.Damage(this, dmg, source, false);
-            }
-            int steps = Math.Max(2, (int)(wall * 3));
-            for (int i = 1; i <= steps; i++)
-            {
-                float t = wall * i / steps;
-                var mote = new Effect(Art.RayBolt, x + dx * t, y + dy * t, z + slope * t - 0.05f, 0.16f);
-                mote.Scale = 1f / 220;
-                mote.Glow = true;
-                Add(mote);
-            }
-            AddLight(x + dx * 0.6f, y + dy * 0.6f, 4.5f, 0.6f, 0.9f, 1.1f);
-            Noise(x, y);
-        }
+        public const float BeamRange = 32;
+        float beamSparkTimer;
 
-        /// <summary>The laser's continuous beam: held down, it drains ammo and burns whatever is in front of it
-        /// every frame instead of firing discrete shots.</summary>
+        /// <summary>The laser's continuous beam: while the trigger is held it is one unbroken red line from the muzzle to
+        /// whatever it touches first, burning that for as long as it stays on it. The view draws the line itself
+        /// (from the Player's BeamOn / BeamDist); this does the damage, the sparks where it lands, and the light.</summary>
         public void PlayerBeam(Player p, WeaponDef d, float dt)
         {
             float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
             float z = p.EyeZ, slope = p.AimSlope;
-            const float range = 30;
-            float best = Map.RayCast(p.X, p.Y, dx, dy, range);
+            float best = Map.RayCast(p.X, p.Y, dx, dy, BeamRange);
+            if (slope < -0.001f) best = Math.Min(best, z / -slope);
+            else if (slope > 0.001f && !Map.IsOutdoor((int)(p.X + dx * best * 0.5f), (int)(p.Y + dy * best * 0.5f))) best = Math.Min(best, (1 - z) / slope);
             Actor hit = null;
             foreach (var a in Actors)
             {
@@ -859,12 +846,42 @@ namespace TerminalHell
                 if (zt < a.Z - 0.08f || zt > a.Z + a.Height + 0.08f) continue;
                 best = th; hit = a;
             }
+            p.BeamDist = best;
+            p.BeamOnBody = hit != null;
             if (hit != null) hit.Damage(this, d.DmgPerSec * dt, p, false);
-            var mote = new Effect(Art.RayBolt, p.X + dx * best * 0.9f, p.Y + dy * best * 0.9f, z + slope * best * 0.9f - 0.05f, 0.08f);
-            mote.Scale = 1f / 260;
-            mote.Glow = true;
-            Add(mote);
-            AddLight(p.X + dx * 0.5f, p.Y + dy * 0.5f, 3.4f, 0.5f, 1.0f, 0.7f);
+
+            // where it lands: a shower of sparks (or a spray of blood), and red light on the walls around it
+            float ex = p.X + dx * (best - 0.05f), ey = p.Y + dy * (best - 0.05f), ez = Math.Max(0.03f, Math.Min(0.97f, z + slope * best));
+            beamSparkTimer -= dt;
+            if (beamSparkTimer <= 0 && best < BeamRange - 0.1f)
+            {
+                beamSparkTimer = 0.045f;
+                for (int i = 0; i < 2; i++)
+                {
+                    var sp = new Effect(hit != null && hit.Kind == ActorKind.Monster ? Art.Blood : Art.LaserSpark, ex, ey, ez - 0.03f, 0.22f + (float)Rng.NextDouble() * 0.15f);
+                    sp.VX = -dx * 1.2f + (float)(Rng.NextDouble() - 0.5) * 2.4f;
+                    sp.VY = -dy * 1.2f + (float)(Rng.NextDouble() - 0.5) * 2.4f;
+                    sp.VZ = 0.4f + (float)Rng.NextDouble() * 1.4f;
+                    sp.Gravity = 5;
+                    sp.Scale = 1f / 90;
+                    sp.Glow = hit == null || hit.Kind != ActorKind.Monster;
+                    Add(sp);
+                }
+            }
+            AddLight(ex, ey, 2.8f, 1.5f, 0.3f, 0.2f);
+            AddLight(p.X + dx * 0.6f, p.Y + dy * 0.6f, 2.2f, 0.9f, 0.18f, 0.12f);
+            Noise(p.X, p.Y);
+        }
+
+        /// <summary>The laser ray's shot, once charged: a flat arc of light that sweeps out from the player and burns every
+        /// body it crosses - not just the first one - until the walls stop it.</summary>
+        public void PlayerArc(Player p, WeaponDef d)
+        {
+            Audio.Play(d.Sound, 1f, 0, 1, 0);
+            Noise(p.X, p.Y);
+            Add(new LaserArc(this, p, d.DmgMin, d.DmgMax));
+            p.ShakeAmt = Math.Min(1, p.ShakeAmt + 0.3f);
+            AddLight(p.X, p.Y, 4.5f, 0.35f, 0.9f, 1.5f);
         }
 
         /// <summary>
@@ -1059,7 +1076,7 @@ namespace TerminalHell
         {
             float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
             Actor best = null;
-            float bestD = 1.25f;
+            float bestD = d.Saw ? 1.4f : 1.25f;
             foreach (var a in Actors)
             {
                 if (!a.Shootable) continue;
@@ -1072,22 +1089,46 @@ namespace TerminalHell
                 if (perp > a.Radius + 0.25f) continue;
                 best = a; bestD = dd;
             }
-            if (best != null)
+            if (best == null)
             {
-                Audio.Play(d.Saw ? d.Sound : Sfx.Punch, 0.9f, 0, 1, d.Saw ? p.Tag : 0);
-                best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1) * damageMul, p, false);
-                if (best.Kind == ActorKind.Monster) SpawnBlood(best.X - dx * best.Radius, best.Y - dy * best.Radius, 0.5f, 3);
-                // the saw doesn't just have a chance of a flinch, like a bullet does - it forces one, for as long as it bites
-                var mon = best as Monster;
-                if (d.Saw && mon != null && mon.Alive && mon.State != MState.WindUp && mon.State != MState.Fire)
-                {
-                    mon.State = MState.Pain;
-                    mon.StateTime = mon.Def.PainTime;
-                }
-                return true;
+                if (!d.Saw) Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
+                return false;
             }
-            if (!d.Saw) Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
-            return false;
+            var bitten = best as Monster;
+            bool winding = bitten != null && (bitten.State == MState.WindUp || bitten.State == MState.Fire);
+            Audio.Play(d.Saw ? d.Sound : Sfx.Punch, 0.9f, 0, d.Saw ? 0.9f + (float)Rng.NextDouble() * 0.25f : 1, 0);
+            best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1) * damageMul, p, false);
+            float hx = best.X - dx * best.Radius, hy = best.Y - dy * best.Radius;
+            if (best.Kind == ActorKind.Monster) SpawnBlood(hx, hy, 0.45f, d.Saw ? 2 : 3);
+            if (!d.Saw) return true;
+
+            // the saw: every bite throws sparks, and it doesn't just stand a chance of making something flinch the way a bullet
+            // does - anything short of a boss is knocked out of whatever it was doing, winding up an attack included, and
+            // kept that way for as long as the blade stays in it
+            p.SawBite = 0.16f;
+            p.ShakeAmt = Math.Min(1, p.ShakeAmt + 0.06f);
+            for (int i = 0; i < 2; i++)
+            {
+                var sp = new Effect(Art.LaserSpark, hx, hy, 0.35f + (float)Rng.NextDouble() * 0.2f, 0.25f);
+                sp.VX = -dx * 1.5f + (float)(Rng.NextDouble() - 0.5) * 3;
+                sp.VY = -dy * 1.5f + (float)(Rng.NextDouble() - 0.5) * 3;
+                sp.VZ = 0.8f + (float)Rng.NextDouble() * 1.2f;
+                sp.Gravity = 6;
+                sp.Scale = 1f / 110;
+                sp.Glow = true;
+                Add(sp);
+            }
+            var mon = best as Monster;
+            if (mon != null && mon.Alive && !mon.Def.Boss)
+            {
+                if (winding) mon.Interrupted++;
+                mon.State = MState.Pain;
+                mon.StateTime = Math.Max(mon.StateTime, mon.Def.PainTime + 0.08f);
+                mon.ShotsLeft = 0;
+                mon.Aiming = false;
+                mon.Cooldown = Math.Max(mon.Cooldown, 0.5f);
+            }
+            return true;
         }
 
         /// <summary>The right-button jab: weaker than a committed punch, but it is what parries projectiles.</summary>

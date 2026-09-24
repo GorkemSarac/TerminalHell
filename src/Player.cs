@@ -17,28 +17,31 @@ namespace TerminalHell
         public bool Melee, Rocket, Ray;
         public Sfx Sound;
         public float Anim;           // length of the firing animation
-        public int Barrels = 1;      // ammo units spent per shot (the double barrel fires 2, or 1 if that's all that's left)
+        public int Barrels = 1;      // shells spent per shot (the double barrel fires 2, or 1 if that's all that's left)
+        public int AmmoPerShot = 1;  // ammo a single shot needs before it can fire at all (the laser ray takes a handful of cells)
         public float Knockback;      // shoves the player backwards on firing
-        public bool Saw;             // a continuous melee weapon that forces enemies into a pain flinch, not just a chance of one
+        public bool Saw;             // a continuous melee weapon that forces enemies out of whatever they were doing
         public bool Beam;            // a laser held down: drains ammo and deals damage per second instead of per shot
         public float DrainPerSec, DmgPerSec;
-        public bool LineHit;         // the other laser: one slow shot that hits every enemy along the line, not just the first
+        public bool Arc;             // the laser ray: charges up, then sweeps a horizontal arc of light through everything in front
+        public float ChargeTime;     // > 0: the trigger winds the weapon up for this long and it fires by itself (ray gun, laser ray)
         public bool Grenade;         // the launcher's alt-fire: a bouncing, fused projectile instead of a straight rocket
 
         public static readonly WeaponDef[] All =
         {
             new WeaponDef { Name = "FIST", Slot = 1, SlotPos = 0, Cooldown = 0.42f, DmgMin = 8, DmgMax = 22, Melee = true, Sound = Sfx.Punch, Anim = 0.42f },
-            new WeaponDef { Name = "SAW", Slot = 1, SlotPos = 1, Cooldown = 0.18f, DmgMin = 6, DmgMax = 13, Melee = true, Saw = true, Sound = Sfx.Saw, Anim = 0.16f },
+            new WeaponDef { Name = "SAW", Slot = 1, SlotPos = 1, Cooldown = 0.12f, DmgMin = 7, DmgMax = 12, Melee = true, Saw = true, Sound = Sfx.SawBite, Anim = 0.14f },
             new WeaponDef { Name = "PISTOL", Slot = 2, SlotPos = 0, Ammo = 0, Cooldown = 0.34f, Spread = 0.02f, DmgMin = 10, DmgMax = 16, Sound = Sfx.Pistol, Anim = 0.25f },
             new WeaponDef { Name = "MACHINE GUN", Slot = 2, SlotPos = 1, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
             new WeaponDef { Name = "SHOTGUN", Slot = 3, SlotPos = 0, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
-            new WeaponDef { Name = "DOUBLE SHOTGUN", Slot = 3, SlotPos = 1, Ammo = 1, Cooldown = 1.1f, Pellets = 8, Spread = 0.13f, DmgMin = 8, DmgMax = 15,
-                Barrels = 2, Knockback = 2.2f, Sound = Sfx.Shotgun, Anim = 0.95f },
-            new WeaponDef { Name = "LASER", Slot = 4, SlotPos = 0, Ammo = 4, Cooldown = 0.05f, DmgPerSec = 55, DrainPerSec = 18, Beam = true, Sound = Sfx.Laser, Anim = 0.1f },
-            new WeaponDef { Name = "LASER RAY", Slot = 4, SlotPos = 1, Ammo = 4, Cooldown = 2.6f, DmgMin = 60, DmgMax = 90, LineHit = true, Sound = Sfx.Laser, Anim = 0.4f },
+            new WeaponDef { Name = "DOUBLE SHOTGUN", Slot = 3, SlotPos = 1, Ammo = 1, Cooldown = 1.3f, Pellets = 9, Spread = 0.14f, DmgMin = 8, DmgMax = 15,
+                Barrels = 2, Knockback = 4.8f, Sound = Sfx.DoubleShotgun, Anim = 1.25f },
+            new WeaponDef { Name = "LASER", Slot = 4, SlotPos = 0, Ammo = 4, Cooldown = 0, DmgPerSec = 70, DrainPerSec = 12, Beam = true, Sound = Sfx.Laser, Anim = 0.12f },
+            new WeaponDef { Name = "LASER RAY", Slot = 4, SlotPos = 1, Ammo = 4, AmmoPerShot = 5, ChargeTime = 0.85f, Cooldown = 1.1f, DmgMin = 70, DmgMax = 100,
+                Arc = true, Sound = Sfx.LaserArc, Anim = 0.6f },
             new WeaponDef { Name = "LAUNCHER", Slot = 5, SlotPos = 0, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
-            new WeaponDef { Name = "GRENADE LAUNCHER", Slot = 5, SlotPos = 1, Ammo = 2, Cooldown = 0.65f, DmgMin = 45, DmgMax = 85, Grenade = true, Sound = Sfx.Rocket, Anim = 0.4f },
-            new WeaponDef { Name = "RAY GUN", Slot = 6, SlotPos = 0, Ammo = 3, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
+            new WeaponDef { Name = "GRENADE LAUNCHER", Slot = 5, SlotPos = 1, Ammo = 2, Cooldown = 0.7f, DmgMin = 45, DmgMax = 85, Grenade = true, Sound = Sfx.GrenadeLaunch, Anim = 0.6f },
+            new WeaponDef { Name = "RAY GUN", Slot = 6, SlotPos = 0, Ammo = 3, ChargeTime = Player.RayChargeTime, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
         };
 
         /// <summary>The two weapon indices that live in a slot (1..6); -1 where there is no second one (the ray gun).</summary>
@@ -87,15 +90,21 @@ namespace TerminalHell
         public float EyeZ = 0.5f;
         public float AimSlope;    // height change per unit distance of a shot through the crosshair (set by the view)
         public float SwayX;       // weapon lag when turning with the mouse
-        bool fireWasDown, dryClicked, beamSoundOn;
-        float beamDrain;
+        bool fireWasDown, dryClicked;
+        float beamDrain, humTimer, revTimer;
         public float MuzzleTime;
         public float VZ;          // jumping: Z is how high the feet are off the floor
         public bool OnGround = true;
         public float ParryTime;   // > 0: the weapon is swung out and projectiles that reach it are knocked back
         public float ParryCool;
         public float PunchAnim = 9;
-        public float Charge;      // the ray gun winds up while the trigger is held
+        public float Charge;      // the ray gun and the laser ray wind up while the trigger is held
+        // the laser's beam, for the view to draw: on while it burns, how far it reaches, and whether it is cutting into a body
+        public bool BeamOn, BeamOnBody;
+        public float BeamDist;
+        public float SawRev;      // 0..1: how fast the saw's blade is turning
+        public float SawBite;     // > 0: the saw is chewing into something right now (sparks, judder)
+        public int LastShots = 2; // how many barrels the double barrel last fired (the reload ejects that many shells)
 
         public const float RayChargeTime = 1.2f;
 
@@ -154,10 +163,19 @@ namespace TerminalHell
 
         public override Image Sprite(World w) { return null; }
 
-        bool HasAmmoFor(int wi)
+        /// <summary>Out of ammo: click once, and reach for the best weapon that still has some.</summary>
+        void DryFire()
+        {
+            if (!dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
+            int b = BestWeapon();
+            if (b != Weapon) SelectWeapon(b);
+            Cooldown = 0.3f;
+        }
+
+        public bool HasAmmoFor(int wi)
         {
             var d = WeaponDef.All[wi];
-            return d.Ammo < 0 || Ammo[d.Ammo] > 0;
+            return d.Ammo < 0 || Ammo[d.Ammo] >= Math.Max(1, d.AmmoPerShot);
         }
 
         int BestWeapon()
@@ -326,71 +344,84 @@ namespace TerminalHell
             Cooldown -= dt;
             FireAnim += dt;
             if (!inp.Fire) { dryClicked = false; Refire = 0; }
-            if (Def.Ray)
+            var wd = Def;
+            bool canShoot = Pending < 0 && SwitchPos < 0.25f;
+            if (!wd.Beam) { BeamOn = false; humTimer = 0; }
+            SawBite = Math.Max(0, SawBite - dt);
+            if (wd.ChargeTime > 0)
             {
-                // the ray gun winds up while the trigger is held, then lets go by itself
-                bool ready = Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f;
+                // the ray gun and the laser ray wind up while the trigger is held, then let go by themselves
+                bool ready = Cooldown <= 0 && canShoot;
                 if (inp.Fire && ready && HasAmmoFor(Weapon))
                 {
-                    if (Charge <= 0) Audio.Play(Sfx.RayGun, 0.85f, 0, 0.55f, 0);   // the winding whine
+                    if (Charge <= 0) Audio.Play(wd.Ray ? Sfx.RayGun : Sfx.LaserCharge, 0.85f, 0, wd.Ray ? 0.55f : 1f, 0);   // the winding whine
                     Charge += dt;
-                    if (Charge >= RayChargeTime)
+                    if (Charge >= wd.ChargeTime)
                     {
                         Charge = 0;
-                        Ammo[Def.Ammo]--;
-                        Cooldown = Def.Cooldown;
+                        Ammo[wd.Ammo] -= wd.AmmoPerShot;
+                        Cooldown = wd.Cooldown;
                         FireAnim = 0;
                         MuzzleTime = 0.12f;
-                        w.PlayerRay(this, Def);
+                        if (wd.Ray) w.PlayerRay(this, wd); else w.PlayerArc(this, wd);
                     }
                 }
                 else
                 {
-                    if (inp.Fire && ready && !dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
+                    if (inp.Fire && ready && !HasAmmoFor(Weapon)) DryFire();
                     Charge = Math.Max(0, Charge - dt * 2.5f);
                 }
             }
-            else if (Def.Beam)
+            else if (wd.Beam)
             {
-                // the laser: no discrete shots, it just drains ammo and burns for as long as the trigger is held
-                bool ready = Pending < 0 && SwitchPos < 0.25f;
-                if (inp.Fire && ready && Ammo[Def.Ammo] > 0)
+                // the laser: no discrete shots - a steady line of light that drains cells for as long as the trigger is held
+                if (inp.Fire && canShoot && Ammo[wd.Ammo] > 0)
                 {
-                    if (!beamSoundOn) { Audio.Play(Def.Sound, 0.55f, 0, 1, 0); beamSoundOn = true; }
-                    beamDrain += Def.DrainPerSec * dt;
-                    while (beamDrain >= 1f && Ammo[Def.Ammo] > 0) { Ammo[Def.Ammo]--; beamDrain -= 1f; }
+                    if (!BeamOn) Audio.Play(wd.Sound, 0.6f, 0, 1, 0);
+                    humTimer -= dt;
+                    if (humTimer <= 0) { Audio.Play(Sfx.LaserHum, 0.5f, 0, 1, 0); humTimer = 0.3f; }
+                    BeamOn = true;
+                    beamDrain += wd.DrainPerSec * dt;
+                    while (beamDrain >= 1f && Ammo[wd.Ammo] > 0) { Ammo[wd.Ammo]--; beamDrain -= 1f; }
                     FireAnim = 0;
-                    MuzzleTime = 0.08f;
-                    w.PlayerBeam(this, Def, dt);
+                    MuzzleTime = 0.05f;
+                    w.PlayerBeam(this, wd, dt);
                 }
                 else
                 {
-                    beamSoundOn = false;
-                    if (inp.Fire && ready && !dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
+                    if (BeamOn) Audio.Play(Sfx.DryFire, 0.35f, 0, 1.6f, 0);   // the beam cutting out
+                    BeamOn = false;
+                    humTimer = 0;
+                    if (inp.Fire && canShoot && Ammo[wd.Ammo] <= 0) DryFire();
                 }
             }
-            else if (inp.Fire && Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f)
+            else if (inp.Fire && Cooldown <= 0 && canShoot)
             {
-                var d = Def;
-                if (!HasAmmoFor(Weapon))
-                {
-                    if (!dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
-                    int b = BestWeapon();
-                    if (b != Weapon) SelectWeapon(b);
-                    Cooldown = 0.3f;
-                }
+                if (!HasAmmoFor(Weapon)) DryFire();
                 else
                 {
                     int shots = 1;
-                    if (d.Ammo >= 0) { shots = Math.Max(1, Math.Min(d.Barrels, Ammo[d.Ammo])); Ammo[d.Ammo] -= shots; }
-                    Cooldown = d.Cooldown;
+                    if (wd.Ammo >= 0) { shots = Math.Max(1, Math.Min(wd.Barrels, Ammo[wd.Ammo])); Ammo[wd.Ammo] -= shots; }
+                    LastShots = shots;
+                    Cooldown = wd.Cooldown;
                     FireAnim = 0;
-                    w.PlayerFire(this, d, Refire, shots);
+                    w.PlayerFire(this, wd, Refire, shots);
                     Refire += 1;
-                    if (!d.Melee) MuzzleTime = d.Rocket || d.Grenade ? 0.09f : 0.06f;
+                    if (!wd.Melee) MuzzleTime = wd.Rocket || wd.Grenade ? 0.09f : 0.06f;
                 }
             }
-            else beamSoundOn = false;
+            // the saw's motor: it revs while the trigger is down and runs down slowly once it's let go
+            if (wd.Saw && inp.Fire && canShoot)
+            {
+                SawRev = Math.Min(1, SawRev + dt * 5);
+                revTimer -= dt;
+                if (revTimer <= 0) { Audio.Play(Sfx.Saw, 0.55f, 0, 0.9f + SawRev * 0.2f, 0); revTimer = 0.24f; }
+            }
+            else
+            {
+                SawRev = Math.Max(0, SawRev - dt * 1.5f);
+                revTimer = 0;
+            }
             fireWasDown = inp.Fire;
 
             if (inp.Use) w.PlayerUse(this);

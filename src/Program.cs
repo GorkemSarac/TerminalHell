@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.11.0";
+        public const string Version = "1.13.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -156,6 +156,46 @@ namespace TerminalHell
                     if (a.Count > 2 && a[2] == "airport") DebugTools.SaveSheet(Art.AirportSprites(), a[1], 4, 5);
                     else DebugTools.SaveSheet(Art.All(), a[1], 4, 10);
                     return 0;
+                case "--dev-arsenal":
+                    return DevArsenal();
+                case "--dev-anim":
+                    {
+                        // --dev-anim out.png weapon [frames] [width]: one weapon through its whole firing animation, frame by
+                        // frame, as the game draws it (the laser beam on, the saw revving, the charge weapons winding up first)
+                        int wi = int.Parse(a[2]);
+                        int nf = a.Count > 3 ? int.Parse(a[3]) : 10;
+                        int vw = a.Count > 4 ? int.Parse(a[4]) : 200, vh = vw * 3 / 5;
+                        var def = WeaponDef.All[wi];
+                        float charge = def.ChargeTime;
+                        float span = charge + def.Anim + 0.1f;
+                        int gc = Math.Min(nf, 4), gr = (nf + gc - 1) / gc;
+                        var sheet = new int[vw * gc * vh * gr];
+                        var scr = new Screen();
+                        scr.Resize(vw, vh / 2);
+                        var p = new Player();
+                        p.Weapon = wi;
+                        for (int k = 0; k < nf; k++)
+                        {
+                            float t = span * k / Math.Max(1, nf - 1);
+                            for (int y = 0; y < vh; y++)
+                                for (int x = 0; x < vw; x++)
+                                    scr.Pix[y * vw + x] = y < vh / 2 ? Col.Rgb(70, 66, 64) : Col.Rgb(96, 84, 70);
+                            p.Charge = t < charge ? t : 0;
+                            p.FireAnim = t < charge ? 9 : t - charge;
+                            p.BeamOn = def.Beam && k > 0;
+                            p.BeamDist = 6; p.BeamOnBody = (k & 1) == 0;
+                            p.SawRev = def.Saw ? Math.Min(1, t * 4) : 0;
+                            p.SawBite = def.Saw && (k & 2) != 0 ? 0.1f : 0;
+                            p.LastShots = 2;
+                            p.PunchAnim = 9;
+                            ViewModel.Draw(scr, vh, p, 1 / 30f, t, 1.11f, 1);
+                            for (int y = 0; y < vh; y++)
+                                for (int x = 0; x < vw; x++)
+                                    sheet[((k / gc) * vh + y) * vw * gc + (k % gc) * vw + x] = (x == 0 || y == 0) ? 0 : scr.Pix[y * vw + x];
+                        }
+                        DebugTools.SavePng(sheet, vw * gc, vh * gr, a[1], 1);
+                        return 0;
+                    }
                 case "--dev-weapons":
                     {
                         // each weapon at rest, firing, and at four points of the parry swing, drawn exactly as in game (136x84 view)
@@ -185,9 +225,10 @@ namespace TerminalHell
                     }
                 case "--dev-frame":
                     {
-                        // --dev-frame out.png cols rows level x y angle [simSeconds] [hd|ascii] [weapon 0-5] [pitch]
+                        // --dev-frame out.png cols rows level x y angle [simSeconds] [hd|ascii] [weapon 0-10] [pitch] [fireSeconds]
                         var s = new Settings();
                         var g = new Game(s);
+                        if (a.Count > 12) g.DebugFireFor = float.Parse(a[12], inv);
                         g.DebugFrame(int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]) - 1, float.Parse(a[5], inv), float.Parse(a[6], inv), float.Parse(a[7], inv),
                             a.Count > 8 ? float.Parse(a[8], inv) : 0, a[1], a.Count > 9 && a[9] == "ascii", a.Count > 10 ? int.Parse(a[10]) : -1, a.Count > 11 ? float.Parse(a[11], inv) : 0);
                         return 0;
@@ -1196,6 +1237,273 @@ namespace TerminalHell
             }
             Console.WriteLine("unknown dev tool");
             return 1;
+        }
+
+        // ---------------------------------------------------------------- --dev-arsenal
+
+        /// <summary>A clean copy of the tower's boss arena - a big open room - with nothing alive in it and a player who can't
+        /// be hurt, for trying the weapons out in.</summary>
+        static World Range()
+        {
+            var w = new World(Levels.ById("E1M3"), new Settings(), null);
+            w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+            w.DamageMul = 0;
+            return w;
+        }
+
+        static void Hold(World w, PlayerInput inp, float seconds)
+        {
+            for (float t = 0; t < seconds; t += 1 / 30f) w.Update(1 / 30f, inp);
+        }
+
+        static Monster Dummy(World w, MonsterDef d, float x, float y, float health)
+        {
+            var m = new Monster(d, x, y);
+            m.Health = health;
+            m.State = MState.Pain; m.StateTime = 999;   // held still, so it is where the test put it when the shot arrives
+            w.Actors.Add(m);
+            return m;
+        }
+
+        /// <summary>
+        /// The alternate weapons, each doing what it says: slot keys toggle between a slot's two weapons; the double barrel
+        /// spends two shells (one if that's all there is) and shoves you back; the laser drains cells while it burns; the laser
+        /// ray charges, then sweeps an arc that hits everything in front of you but not behind a wall or behind you; grenades
+        /// fly in a low arc, bounce several times and go off on their fuse, or at once against a monster; the saw keeps a
+        /// monster from ever finishing an attack but can't stop a boss. Then the campaign: every alternate weapon can be
+        /// reached, and is never found before the weapon that shares its slot.
+        /// </summary>
+        static int DevArsenal()
+        {
+            var inv = CultureInfo.InvariantCulture;
+            int bad = 0;
+            var idle = new PlayerInput();
+            var fire = new PlayerInput(); fire.Fire = true;
+
+            // ---- slot keys: the second press toggles, a different slot remembers which of its two was last used
+            {
+                var w = Range();
+                w.P.Has[4] = w.P.Has[5] = true; w.P.Ammo[1] = 20; w.P.Weapon = 2;
+                var press = new int[] { 3, 3, 2, 3 };
+                var expect = new int[] { 4, 5, 2, 5 };
+                string got = "";
+                for (int i = 0; i < press.Length; i++)
+                {
+                    var k = new PlayerInput(); k.SelectSlot = press[i];
+                    w.Update(1 / 30f, k);
+                    Hold(w, idle, 0.5f);
+                    got += (i > 0 ? " " : "") + WeaponDef.All[w.P.Weapon].Name;
+                    if (w.P.Weapon != expect[i]) bad++;
+                }
+                Console.WriteLine("slots   : 3, 3, 2, 3 -> " + got);
+                if (got != "SHOTGUN DOUBLE SHOTGUN PISTOL DOUBLE SHOTGUN") Console.WriteLine("  WRONG: expected SHOTGUN, DOUBLE SHOTGUN, PISTOL, DOUBLE SHOTGUN");
+            }
+
+            // ---- the double barrel: two shells, a shove backwards; with one shell left, one shell
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 18.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.P.Has[5] = true; w.P.Weapon = 5; w.P.Ammo[1] = 5;
+                float y0 = w.P.Y;
+                w.Update(1 / 30f, fire);
+                int after2 = w.P.Ammo[1]; int shots2 = w.P.LastShots;
+                Hold(w, idle, 0.4f);
+                float shove = w.P.Y - y0;
+                Hold(w, idle, 1.2f);
+                w.P.Ammo[1] = 1;
+                w.Update(1 / 30f, fire);
+                Console.WriteLine("dbl bar : 5 shells -> " + after2 + " (" + shots2 + " barrels), shoved back " + shove.ToString("0.00", inv) +
+                    ", 1 shell -> " + w.P.Ammo[1] + " (" + w.P.LastShots + " barrel)");
+                if (after2 != 3 || shots2 != 2) { Console.WriteLine("  WRONG: both barrels should go off, two shells"); bad++; }
+                if (shove < 0.12f) { Console.WriteLine("  WRONG: it should shove the player back"); bad++; }
+                if (w.P.Ammo[1] != 0 || w.P.LastShots != 1) { Console.WriteLine("  WRONG: with one shell it should fire the one"); bad++; }
+            }
+
+            // ---- the laser: a second of burn drains about 12 cells and kills what it's on
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 18.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.P.Has[6] = true; w.P.Weapon = 6; w.P.Ammo[4] = 50;
+                var g = Dummy(w, MonsterDef.Ghoul, 110.5f, 13.5f, 60);
+                int on = 0; float dist = 0;
+                for (int f = 0; f < 30; f++) { w.Update(1 / 30f, fire); if (w.P.BeamOn) on++; if (f == 5) dist = w.P.BeamDist; }
+                int used = 50 - w.P.Ammo[4];
+                Hold(w, idle, 0.1f);
+                Console.WriteLine("laser   : beam on " + on + "/30 frames, reaching " + dist.ToString("0.0", inv) + ", " + used + " cells, target " +
+                    (g.Alive ? "still alive (" + g.Health.ToString("0", inv) + ")" : "dead") + ", beam off after release " + !w.P.BeamOn);
+                if (on < 28) { Console.WriteLine("  WRONG: the beam should stay on while the trigger is held"); bad++; }
+                if (Math.Abs(dist - 4.7f) > 0.4f) { Console.WriteLine("  WRONG: the beam should end on the ghoul"); bad++; }
+                if (used < 10 || used > 14) { Console.WriteLine("  WRONG: it should burn about 12 cells a second"); bad++; }
+                if (g.Alive) { Console.WriteLine("  WRONG: a second of beam should kill a 60hp target"); bad++; }
+                if (w.P.BeamOn) { Console.WriteLine("  WRONG: the beam should cut out when the trigger is let go"); bad++; }
+            }
+
+            // ---- the laser ray: charges, then one arc hits both targets in front, not the one behind a wall or behind you
+            {
+                var w = Range();
+                w.P.X = 106.5f; w.P.Y = 10.5f; w.P.Angle = (float)Math.PI;
+                w.P.Has[7] = true; w.P.Weapon = 7; w.P.Ammo[4] = 20;
+                var front = Dummy(w, MonsterDef.Ghoul, 104.5f, 9.5f, 1000);
+                var wide = Dummy(w, MonsterDef.Ghoul, 104.5f, 12.0f, 1000);
+                var walled = Dummy(w, MonsterDef.Ghoul, 100.5f, 12.5f, 1000);
+                var behind = Dummy(w, MonsterDef.Ghoul, 109.5f, 10.5f, 1000);
+                float firedAt = -1;
+                for (int f = 0; f < 40 && firedAt < 0; f++) { w.Update(1 / 30f, fire); if (w.P.Ammo[4] < 20) firedAt = f / 30f; }
+                Hold(w, idle, 1.6f);
+                Func<Monster, string> hurt = m => m.Health < 1000 ? "hit" : "missed";
+                Console.WriteLine("laser ry: fired after " + firedAt.ToString("0.00", inv) + "s charge, " + (20 - w.P.Ammo[4]) + " cells; ahead " + hurt(front) +
+                    ", off to the side " + hurt(wide) + ", behind a wall " + hurt(walled) + ", behind you " + hurt(behind));
+                if (firedAt < 0.75f || firedAt > 1.0f) { Console.WriteLine("  WRONG: it should charge for about 0.85s first"); bad++; }
+                if (w.P.Ammo[4] != 15) { Console.WriteLine("  WRONG: one arc should take 5 cells"); bad++; }
+                if (front.Health >= 1000 || wide.Health >= 1000) { Console.WriteLine("  WRONG: the arc should hit everything in front"); bad++; }
+                if (walled.Health < 1000) { Console.WriteLine("  WRONG: walls should stop it"); bad++; }
+                if (behind.Health < 1000) { Console.WriteLine("  WRONG: it should only go forwards"); bad++; }
+                w.P.Ammo[4] = 4;
+                Hold(w, idle, 1.2f);
+                Hold(w, fire, 1.2f);
+                Console.WriteLine("laser ry: with 4 cells: " + (w.P.Ammo[4] == 4 ? "won't fire" : "FIRED"));
+                if (w.P.Ammo[4] != 4) bad++;
+            }
+
+            // ---- grenades: a low lob that bounces along and goes off on its fuse; straight away against a monster
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 19.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.P.Has[9] = true; w.P.Weapon = 9; w.P.Ammo[2] = 5;
+                w.Update(1 / 30f, fire);
+                Projectile gr = null;
+                foreach (var act in w.Actors) { var pr = act as Projectile; if (pr != null && pr.Type == Projectile.GRENADE) gr = pr; }
+                float top = 0, life = 0, lastY = 0; int bounces = 0;
+                while (gr != null && !gr.Remove && life < 5)
+                {
+                    top = Math.Max(top, gr.Z); bounces = gr.Bounces; lastY = gr.Y;
+                    w.Update(1 / 30f, idle); life += 1 / 30f;
+                }
+                Console.WriteLine("grenade : peaked at " + top.ToString("0.00", inv) + " high, bounced " + bounces + " times, went off after " +
+                    life.ToString("0.0", inv) + "s, " + (19.5f - lastY).ToString("0.0", inv) + " tiles out");
+                if (gr == null) { Console.WriteLine("  WRONG: no grenade"); bad++; }
+                if (top > 0.8f) { Console.WriteLine("  WRONG: it should be a low lob, not a mortar shot"); bad++; }
+                if (bounces < 3) { Console.WriteLine("  WRONG: it should bounce along the floor several times"); bad++; }
+                if (life < 2.2f || life > 2.8f) { Console.WriteLine("  WRONG: with nothing to hit it should go off on its fuse"); bad++; }
+                if (19.5f - lastY < 6) { Console.WriteLine("  WRONG: it should carry a fair way"); bad++; }
+
+                var w2 = Range();
+                w2.P.X = 110.5f; w2.P.Y = 19.5f; w2.P.Angle = (float)(-Math.PI / 2);
+                w2.P.Has[9] = true; w2.P.Weapon = 9; w2.P.Ammo[2] = 5;
+                var target = Dummy(w2, MonsterDef.Brute, 110.5f, 16.5f, 1000);
+                w2.Update(1 / 30f, fire);
+                float t = 0;
+                while (target.Health >= 1000 && t < 3) { w2.Update(1 / 30f, idle); t += 1 / 30f; }
+                Console.WriteLine("grenade : against a monster three tiles out it went off after " + t.ToString("0.00", inv) + "s");
+                if (t > 0.6f) { Console.WriteLine("  WRONG: it should go off as soon as it touches a monster"); bad++; }
+            }
+
+            // ---- the saw: a soldier winding up a shot never gets it off while the blade is in it; a boss shrugs it off
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 15.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.P.Has[1] = true; w.P.Weapon = 1;
+                var g = Dummy(w, MonsterDef.Ghoul, 110.5f, 14.3f, 1000);
+                g.Alert(w);
+                g.State = MState.WindUp; g.StateTime = 0.6f;
+                int fired = 0;
+                for (int f = 0; f < 60; f++) { w.Update(1 / 30f, fire); if (g.State == MState.Fire) fired++; }
+                Console.WriteLine("saw     : soldier winding up: interrupted " + g.Interrupted + "x, got a shot off " + fired + "x in 2s, took " +
+                    (1000 - g.Health).ToString("0", inv) + " damage, blade at " + (w.P.SawRev * 100).ToString("0", inv) + "% revs");
+                if (g.Interrupted < 1 || fired > 0) { Console.WriteLine("  WRONG: the saw should stop it ever firing"); bad++; }
+                if (1000 - g.Health < 100) { Console.WriteLine("  WRONG: the saw should chew through it"); bad++; }
+
+                var w2 = Range();
+                w2.P.X = 110.5f; w2.P.Y = 15.5f; w2.P.Angle = (float)(-Math.PI / 2);
+                w2.P.Has[1] = true; w2.P.Weapon = 1;
+                var boss = Dummy(w2, MonsterDef.FireDemon, 110.5f, 14.0f, 700);
+                boss.Alert(w2);
+                boss.State = MState.WindUp; boss.StateTime = 0.6f;
+                bool flinched = false;
+                for (int f = 0; f < 15; f++) { w2.Update(1 / 30f, fire); if (boss.State == MState.Pain) flinched = true; }
+                Console.WriteLine("saw     : a boss winding up: " + (flinched ? "FLINCHED" : "kept going") + ", took " + (700 - boss.Health).ToString("0", inv) + " damage");
+                if (flinched || boss.Health >= 700) bad++;
+            }
+
+            // ---- the campaign: every alternate weapon reachable, and never found before the weapon sharing its slot
+            {
+                var levels = Levels.All();
+                var codeToWeapon = new Dictionary<char, int> { { 'g', 2 }, { 'S', 4 }, { 'N', 3 }, { 'L', 8 }, { 'W', 10 }, { '5', 1 }, { '6', 5 }, { '7', 6 }, { '8', 7 }, { '9', 9 } };
+                foreach (int start in new[] { Levels.FirstOf(0), Levels.FirstOf(1) })
+                {
+                    var have = new bool[Player.Weapons];
+                    have[0] = true;
+                    if (!levels[start].Unarmed) have[2] = true;
+                    string order = "";
+                    for (int li = start; li < levels.Length; li++)
+                    {
+                        var def = levels[li];
+                        var m = Map.Load(def);
+                        int startCell = -1;
+                        var found = new List<KeyValuePair<int, int>>();   // weapon, cell
+                        foreach (var sp in m.Spawns)
+                        {
+                            if ("^>v<".IndexOf(sp.C) >= 0) startCell = sp.Y * m.W + sp.X;
+                            int wi;
+                            if (codeToWeapon.TryGetValue(sp.C, out wi)) found.Add(new KeyValuePair<int, int>(wi, sp.Y * m.W + sp.X));
+                        }
+                        foreach (var b in World.BonusWeapons)
+                            if (b.Level == def.Id) found.Add(new KeyValuePair<int, int>(codeToWeapon[b.Code], (int)b.Y * m.W + (int)b.X));
+                        var open = Reach(m, startCell, false);
+                        var all = Reach(m, startCell, true);
+                        // primaries first, then the rest - a secondary in the same level as its primary has to be behind a lock
+                        found.Sort((p, q) => WeaponDef.All[p.Key].SlotPos.CompareTo(WeaponDef.All[q.Key].SlotPos));
+                        foreach (var kv in found)
+                        {
+                            var d = WeaponDef.All[kv.Key];
+                            if (!all[kv.Value]) { Console.WriteLine("  WRONG: the " + d.Name + " in " + def.Id + " can't be reached"); bad++; }
+                            if (d.SlotPos == 1)
+                            {
+                                int primary = WeaponDef.BySlot[d.Slot, 0];
+                                bool earlier = have[primary];
+                                bool sameLevelGated = false;
+                                foreach (var kp in found) if (kp.Key == primary && open[kp.Value] && !open[kv.Value]) sameLevelGated = true;
+                                if (!earlier && !sameLevelGated)
+                                {
+                                    Console.WriteLine("  WRONG: the " + d.Name + " (" + def.Id + ") can be found before the " + WeaponDef.All[primary].Name);
+                                    bad++;
+                                }
+                            }
+                            if (!have[kv.Key]) order += (order.Length > 0 ? ", " : "") + d.Name + " " + def.Id;
+                            have[kv.Key] = true;
+                        }
+                    }
+                    Console.WriteLine("from " + levels[start].Id + ": " + order);
+                }
+            }
+
+            Console.WriteLine(bad == 0 ? "the arsenal behaves" : bad + " problem(s)");
+            return bad;
+        }
+
+        /// <summary>Which cells can be walked to from the start: through unlocked doors only, or with every key in hand.</summary>
+        static bool[] Reach(Map m, int start, bool allKeys)
+        {
+            var reach = new bool[m.W * m.H];
+            if (start < 0) return reach;
+            var q = new Queue<int>();
+            reach[start] = true; q.Enqueue(start);
+            while (q.Count > 0)
+            {
+                int c = q.Dequeue();
+                for (int k = 0; k < 8; k += 2)
+                {
+                    int nx = c % m.W + Map.DX8[k], ny = c / m.W + Map.DY8[k];
+                    if (!m.In(nx, ny)) continue;
+                    int j = ny * m.W + nx;
+                    if (reach[j]) continue;
+                    var kind = m.Kind[j];
+                    bool ok = kind == CellKind.Empty || kind == CellKind.Push || (kind == CellKind.Door && (allKeys || m.Doors[m.DoorIdx[j]].Key == 0));
+                    if (!ok) continue;
+                    reach[j] = true; q.Enqueue(j);
+                }
+            }
+            return reach;
         }
 
         // ---------------------------------------------------------------- helpers for --dev-save
