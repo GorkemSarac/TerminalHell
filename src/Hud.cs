@@ -100,13 +100,15 @@ namespace TerminalHell
             BigNumber(s, xs[1], y, Pad(p.HP, 3) + "%", hc, Panel);
             Center(s, xs[1], widths[1], y + 3, "HEALTH", Label, Panel);
 
-            // arms
-            for (int i = 0; i < Player.Weapons; i++)
+            // arms: one digit per weapon slot (1-6), not per weapon - two weapons can share a slot
+            for (int slot = 1; slot <= Player.Slots; slot++)
             {
-                int ax = xs[2] + 1 + (i % 3) * 3, ay = y + i / 3;
-                int fg = p.Has[i] ? Yellow : Gray;
-                int bg = i == p.Weapon ? Col.Rgb(90, 60, 30) : Panel;
-                s.Put(ax, ay, (char)('1' + i), fg, bg);
+                int ax = xs[2] + 1 + ((slot - 1) % 3) * 3, ay = y + (slot - 1) / 3;
+                int primary = WeaponDef.BySlot[slot, 0], secondary = WeaponDef.BySlot[slot, 1];
+                bool has = (primary >= 0 && p.Has[primary]) || (secondary >= 0 && p.Has[secondary]);
+                int fg = has ? Yellow : Gray;
+                int bg = slot == d.Slot ? Col.Rgb(90, 60, 30) : Panel;
+                s.Put(ax, ay, (char)('0' + slot), fg, bg);
             }
             s.Print(xs[2] + 1, y + 2, (d.Name + "        ").Substring(0, 9), White, Panel);
             Center(s, xs[2], widths[2], y + 3, "ARMS", Label, Panel);
@@ -143,7 +145,7 @@ namespace TerminalHell
                 // one line per ammo type: the last one only once the ray gun turns up
                 for (int a = 0; a < Player.AmmoTypes; a++)
                 {
-                    if (a == 3 && !p.Has[5] && p.Ammo[3] == 0)
+                    if (a == 3 && !p.Has[10] && p.Ammo[3] == 0)
                     {
                         int kills = w.TotalKills > 0 ? w.Kills * 100 / w.TotalKills : 100;
                         s.Print(xs[6] + 1, y + a, "KILLS " + Pad(kills, 3) + "%", Label, Panel);

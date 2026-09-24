@@ -536,7 +536,8 @@ namespace TerminalHell
         {
             switch (c)
             {
-                case 'S': case 'N': case 'L': case 'W': case 'g': return 0.24f;    // weapons (they sit on a pedestal)
+                case 'S': case 'N': case 'L': case 'W': case 'g':
+                case '5': case '6': case '7': case '8': case '9': return 0.24f;    // weapons (they sit on a pedestal)
                 case 'r': case 'b': case 'y': return 0.33f;                        // keycards
                 case '{': return 0.3f;                                             // the boarding pass
                 case 'o': case 'U': case 'G': return 0.45f;                        // soul orb and armour
