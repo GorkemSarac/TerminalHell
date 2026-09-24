@@ -50,6 +50,7 @@ namespace TerminalHell
             if (carry != null) P.CopyInventoryFrom(carry);
             foreach (var sp in Map.Spawns) SpawnThing(sp.C, sp.X, sp.Y);
             if (def.Id == "E1M3") SpawnTowerBoss();
+            SpawnBonusWeapon();
             MergePending();
             Map.BuildLightmap();
             TotalSecrets = Map.SecretCount;
@@ -65,6 +66,26 @@ namespace TerminalHell
             Add(new Monster(MonsterDef.Bat, 113.5f, 15.5f));
             Add(new Monster(MonsterDef.FireDemon, 110.5f, 10.5f));
             TotalKills += 4;
+        }
+
+        /// <summary>The five alternate weapons (the saw, the double barrel, the laser pair, the grenade launcher)
+        /// share the digits used by the wall textures, so - like the tower's bat demons - they don't get a map
+        /// character of their own. Each one is dropped once, by level id, spread across the campaign.</summary>
+        void SpawnBonusWeapon()
+        {
+            char c;
+            float x, y;
+            switch (Def.Id)
+            {
+                case "E1M1": c = '5'; x = 23.5f; y = 19.5f; break;   // TERMINAL: the saw, alongside the fists you start with
+                case "E1M2": c = '6'; x = 6.5f; y = 4.5f; break;     // RUNWAY: the double barrel, ahead of the pump gun
+                case "E1M3": c = '7'; x = 5.5f; y = 8.5f; break;     // TOWER: the laser
+                case "E2M1": c = '8'; x = 7.5f; y = 3.5f; break;     // OUTPOST OF HELL: the laser ray
+                case "E2M2": c = '9'; x = 14.5f; y = 3.5f; break;    // HELL LABS: the grenade launcher
+                default: return;
+            }
+            SpawnItem(c, x, y, false);
+            TotalItems++;
         }
 
         void SpawnThing(char c, int x, int y)
@@ -219,7 +240,8 @@ namespace TerminalHell
         /// <summary>Weapons left in the level stand on a lit pedestal; ones dropped by the dead lie where they fall.</summary>
         public static bool OnPedestal(char c, bool dropped)
         {
-            return !dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W' || c == 'g');
+            return !dropped && (c == 'S' || c == 'N' || c == 'L' || c == 'W' || c == 'g'
+                || c == '5' || c == '6' || c == '7' || c == '8' || c == '9');
         }
 
         public void SpawnItem(char c, float x, float y, bool dropped)
@@ -1112,7 +1134,8 @@ namespace TerminalHell
         {
             switch (code)
             {
-                case 'S': case 'N': case 'L': case 'W': case 'g': return 500;   // the weapons
+                case 'S': case 'N': case 'L': case 'W': case 'g':
+                case '5': case '6': case '7': case '8': case '9': return 500;   // the weapons
                 case '{': return 100;                                      // your boarding pass
                 case 'w': return 60;                                       // soul cells (secret rooms only)
                 case 'r': case 'b': case 'y': return 200;                  // keycards

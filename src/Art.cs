@@ -717,6 +717,69 @@ namespace TerminalHell
             Items['S'] = GunPickup(0);
             Items['N'] = GunPickup(1);
             Items['L'] = GunPickup(2);
+            // the saw: a stubby power grip under a toothed circular blade
+            c = new Canvas(30, 16);
+            {
+                int body = Col.Rgb(70, 72, 78), grip = Col.Rgb(40, 40, 44), blade = Col.Rgb(188, 192, 198), tooth = Col.Rgb(226, 226, 220);
+                c.Rect(2, 6, 13, 6, body);
+                c.Rect(3, 11, 5, 4, grip);
+                c.Ball(21, 8, 8, 8, blade, false);
+                c.Ball(21, 8, 2.6f, 2.6f, Col.Scale(blade, 0.7f), false);
+                for (int t = 0; t < 12; t++)
+                {
+                    float a = (float)(t / 12.0 * Math.PI * 2);
+                    c.Rect(21 + (float)Math.Cos(a) * 7.6f - 0.5f, 8 + (float)Math.Sin(a) * 7.6f - 0.5f, 1.1f, 1.1f, tooth);
+                }
+                c.Outline(Col.Rgb(10, 10, 10));
+            }
+            Items['5'] = c.Done();
+            // the double barrel shotgun: two side-by-side tubes on a stock, wider than the pump gun
+            c = new Canvas(36, 14);
+            {
+                int metal = Col.Rgb(64, 64, 70), wood = Col.Rgb(120, 76, 40);
+                c.Tube(4, 2, 26, 3.6f, metal, false);
+                c.Tube(4, 6.4f, 26, 3.6f, metal, false);
+                c.Rect(12, 10, 9, 2.6f, wood);
+                c.Poly(new float[] { 24, 9, 34, 10, 34, 14, 26, 12.5f }, wood, Col.Scale(wood, 0.7f));
+                c.Rect(1, 2, 4, 8, metal);
+                c.Outline(Col.Rgb(10, 10, 10));
+            }
+            Items['6'] = c.Done();
+            // the laser: a sleek emitter along a coiled cell, glowing at the tip
+            c = new Canvas(32, 14);
+            {
+                int shell = Col.Rgb(60, 70, 90), dark = Col.Rgb(34, 40, 54);
+                c.Tube(2, 4, 22, 4, shell, false);
+                c.Rect(10, 8, 12, 3, dark);
+                c.Rect(20, 3, 8, 8, Col.Rgb(50, 58, 76));
+                c.Glow(3.5f, 6, 3.4f, Col.Rgb(200, 240, 255), Col.Rgb(40, 160, 220));
+                c.Ball(3, 6, 1.6f, 1.6f, Col.Rgb(230, 250, 255) | Col.EMISSIVE, false);
+                c.Outline(Col.Rgb(8, 10, 14));
+            }
+            Items['7'] = c.Done();
+            // the laser ray: bulkier than the laser, with a wide horizontal emitter and a heavier cell
+            c = new Canvas(34, 15);
+            {
+                int shell = Col.Rgb(70, 60, 90), dark = Col.Rgb(40, 34, 54);
+                c.Tube(2, 4.5f, 24, 5, shell, false);
+                c.Rect(10, 9.5f, 13, 3, dark);
+                c.Rect(22, 2, 9, 10, Col.Rgb(60, 50, 78));
+                c.Glow(3.2f, 7, 4.4f, Col.Rgb(255, 210, 255), Col.Rgb(140, 40, 200));
+                c.Ball(2.6f, 7, 2, 2, Col.Rgb(255, 230, 255) | Col.EMISSIVE, false);
+                c.Outline(Col.Rgb(10, 8, 14));
+            }
+            Items['8'] = c.Done();
+            // the grenade launcher: a stubby, wide-bore tube with a drum under it
+            c = new Canvas(32, 15);
+            {
+                int metal = Col.Rgb(80, 96, 70), dark = Col.Rgb(48, 56, 42);
+                c.Tube(2, 2, 22, 6.5f, metal, false);
+                c.Ball(4, 5.25f, 3, 3.2f, dark, false);
+                c.Rect(11, 8.4f, 10, 4.6f, dark);
+                c.Ball(15, 12.6f, 4.6f, 2.6f, Col.Rgb(60, 68, 54), false);
+                c.Outline(Col.Rgb(10, 12, 8));
+            }
+            Items['9'] = c.Done();
             // the ray gun: bone and sinew around a caged ember
             c = new Canvas(34, 16);
             {

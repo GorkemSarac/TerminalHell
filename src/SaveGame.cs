@@ -104,6 +104,9 @@ namespace TerminalHell
                 var has = new List<string>(); has.Add("has");
                 for (int i = 0; i < Player.Weapons; i++) has.Add(p.Has[i] ? "1" : "0");
                 sb.AppendLine(string.Join(" ", has.ToArray()));
+                var slotPos = new List<string>(); slotPos.Add("slotpos");
+                for (int i = 0; i < p.ActiveSlotPos.Length; i++) slotPos.Add(S(p.ActiveSlotPos[i]));
+                sb.AppendLine(string.Join(" ", slotPos.ToArray()));
                 var keys = new List<string>(); keys.Add("keys");
                 for (int i = 0; i < p.Keys.Length; i++) keys.Add(p.Keys[i] ? "1" : "0");
                 sb.AppendLine(string.Join(" ", keys.ToArray()));
@@ -185,6 +188,9 @@ namespace TerminalHell
                             break;
                         case "has":
                             for (int i = 0; i < Player.Weapons && i + 1 < f.Length; i++) p.Has[i] = Int(f, i + 1) != 0;
+                            break;
+                        case "slotpos":
+                            for (int i = 0; i < p.ActiveSlotPos.Length && i + 1 < f.Length; i++) p.ActiveSlotPos[i] = Int(f, i + 1);
                             break;
                         case "keys":
                             for (int i = 0; i < p.Keys.Length && i + 1 < f.Length; i++) p.Keys[i] = Int(f, i + 1) != 0;
