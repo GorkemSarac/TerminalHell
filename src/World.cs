@@ -49,10 +49,22 @@ namespace TerminalHell
             P = new Player();
             if (carry != null) P.CopyInventoryFrom(carry);
             foreach (var sp in Map.Spawns) SpawnThing(sp.C, sp.X, sp.Y);
+            if (def.Id == "E1M3") SpawnTowerBoss();
             MergePending();
             Map.BuildLightmap();
             TotalSecrets = Map.SecretCount;
             Map.BuildFlow((int)P.X, (int)P.Y);
+        }
+
+        /// <summary>The bat demon and the Elder Fire Demon boss don't get map characters - every printable one is already
+        /// spoken for - so the tower's boss room is populated here instead, by level id.</summary>
+        void SpawnTowerBoss()
+        {
+            Add(new Monster(MonsterDef.Bat, 57.5f, 17.5f));
+            Add(new Monster(MonsterDef.Bat, 107.5f, 5.5f));
+            Add(new Monster(MonsterDef.Bat, 113.5f, 15.5f));
+            Add(new Monster(MonsterDef.FireDemon, 110.5f, 10.5f));
+            TotalKills += 4;
         }
 
         void SpawnThing(char c, int x, int y)
@@ -103,7 +115,8 @@ namespace TerminalHell
                 case 'u':
                     {
                         var t = new Decor(Art.Travelers[(x * 3 + y * 5) & 3], cx, cy, true, 0.2f);
-                        t.Lines = TravelerLines;
+                        // past the first level, everyone left standing has seen what came through the gate
+                        t.Lines = Def.Id == "E1M1" ? TravelerLines : ScaredTravelerLines;
                         Add(t);
                         return;
                     }
@@ -182,6 +195,20 @@ namespace TerminalHell
             "THIS AIRPORT IS HUGE.",
             "DID YOU FEEL THAT? PROBABLY NOTHING.",
             "THEY CANCELLED THE FREE WIFI. UNBELIEVABLE.",
+        };
+
+        static readonly string[] ScaredTravelerLines =
+        {
+            "PLEASE, JUST LET US THROUGH.",
+            "I DON'T KNOW WHAT THAT THING WAS.",
+            "WE HEARD IT COMING FROM THE TERMINAL.",
+            "IS IT STILL BEHIND YOU?",
+            "THEY SAID THE RUNWAY WAS CLEAR. THEY LIED.",
+            "MY HANDS WON'T STOP SHAKING.",
+            "DON'T GO BACK IN THERE.",
+            "I JUST WANT TO GET ON A PLANE. ANY PLANE.",
+            "SOMETHING'S OUT THERE ON THE FIELD.",
+            "KEEP YOUR VOICE DOWN.",
         };
 
         public const float PedestalScale = 1f / 52;
@@ -293,6 +320,8 @@ namespace TerminalHell
         {
             float r = a.Radius;
             bool avoidsLava = a.Kind == ActorKind.Monster;
+            var flyer = a as Monster;
+            if (flyer != null && flyer.Def.Flies) avoidsLava = false;
             int x0 = (int)Math.Floor(x - r), x1 = (int)Math.Floor(x + r);
             int y0 = (int)Math.Floor(y - r), y1 = (int)Math.Floor(y + r);
             for (int cy = y0; cy <= y1; cy++)
@@ -687,7 +716,7 @@ namespace TerminalHell
             }
         }
 
-        public void PlayerFire(Player p, WeaponDef d, float refire)
+        public void PlayerFire(Player p, WeaponDef d, float refire, int shots)
         {
             float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
             if (d.Melee)
@@ -714,7 +743,7 @@ namespace TerminalHell
             {
                 // the rocket leaves along the look direction, including up / down
                 const float speed = 15;
-                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, 1);
+                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.ROCKET);
                 pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
                 pr.SplashDamage = 128; pr.SplashRadius = 2.7f;
                 pr.Z = p.EyeZ - 0.12f + p.AimSlope * 0.35f;
@@ -722,13 +751,98 @@ namespace TerminalHell
                 Add(pr);
                 return;
             }
+            if (d.Grenade)
+            {
+                // lobbed up and out, not fired flat: it needs an arc to bounce along
+                const float speed = 11;
+                var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.GRENADE);
+                pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
+                pr.SplashDamage = 110; pr.SplashRadius = 2.4f;
+                pr.Fuse = 2.2f;
+                pr.Z = p.EyeZ - 0.1f;
+                pr.VZ = 3.2f + p.AimSlope * speed;
+                Add(pr);
+                return;
+            }
+            if (d.LineHit)
+            {
+                // the horizontal laser ray: pierces straight through, hitting everything along the line at once
+                LaserLine(p.X, p.Y, p.EyeZ, p.Angle, p.AimSlope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p);
+                return;
+            }
+            if (d.Knockback > 0) { p.VX -= dx * d.Knockback; p.VY -= dy * d.Knockback; }
             float spread = d.Pellets > 1 ? d.Spread : (refire > 0 ? d.Spread : d.Spread * 0.25f);
-            for (int i = 0; i < d.Pellets; i++)
+            int pellets = d.Pellets * Math.Max(1, shots);
+            for (int i = 0; i < pellets; i++)
             {
                 float a = p.Angle + (float)((Rng.NextDouble() - 0.5) * 2 * spread);
                 float slope = p.AimSlope + (float)((Rng.NextDouble() - 0.5) * spread);
                 Hitscan(p.X, p.Y, p.EyeZ, a, slope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p);
             }
+        }
+
+        /// <summary>The laser ray's shot: a beam that doesn't stop at the first body - it damages every enemy
+        /// along the line before it reaches the wall.</summary>
+        void LaserLine(float x, float y, float z, float ang, float slope, float range, int dmg, Actor source)
+        {
+            float dx = (float)Math.Cos(ang), dy = (float)Math.Sin(ang);
+            float wall = Map.RayCast(x, y, dx, dy, range);
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable || a == source) continue;
+                float ox = a.X - x, oy = a.Y - y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0 || t > wall + a.Radius) continue;
+                float perp2 = ox * ox + oy * oy - t * t;
+                float r = a.Radius + 0.08f;
+                if (perp2 > r * r) continue;
+                float zt = z + slope * t;
+                if (zt < a.Z - 0.1f || zt > a.Z + a.Height + 0.1f) continue;
+                a.Damage(this, dmg, source, false);
+            }
+            int steps = Math.Max(2, (int)(wall * 3));
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = wall * i / steps;
+                var mote = new Effect(Art.RayBolt, x + dx * t, y + dy * t, z + slope * t - 0.05f, 0.16f);
+                mote.Scale = 1f / 220;
+                mote.Glow = true;
+                Add(mote);
+            }
+            AddLight(x + dx * 0.6f, y + dy * 0.6f, 4.5f, 0.6f, 0.9f, 1.1f);
+            Noise(x, y);
+        }
+
+        /// <summary>The laser's continuous beam: held down, it drains ammo and burns whatever is in front of it
+        /// every frame instead of firing discrete shots.</summary>
+        public void PlayerBeam(Player p, WeaponDef d, float dt)
+        {
+            float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
+            float z = p.EyeZ, slope = p.AimSlope;
+            const float range = 30;
+            float best = Map.RayCast(p.X, p.Y, dx, dy, range);
+            Actor hit = null;
+            foreach (var a in Actors)
+            {
+                if (!a.Shootable) continue;
+                float ox = a.X - p.X, oy = a.Y - p.Y;
+                float t = ox * dx + oy * dy;
+                if (t <= 0 || t > best + a.Radius) continue;
+                float perp2 = ox * ox + oy * oy - t * t;
+                float r = a.Radius + 0.06f;
+                if (perp2 > r * r) continue;
+                float th = t - (float)Math.Sqrt(Math.Max(0, r * r - perp2));
+                if (th >= best) continue;
+                float zt = z + slope * th;
+                if (zt < a.Z - 0.08f || zt > a.Z + a.Height + 0.08f) continue;
+                best = th; hit = a;
+            }
+            if (hit != null) hit.Damage(this, d.DmgPerSec * dt, p, false);
+            var mote = new Effect(Art.RayBolt, p.X + dx * best * 0.9f, p.Y + dy * best * 0.9f, z + slope * best * 0.9f - 0.05f, 0.08f);
+            mote.Scale = 1f / 260;
+            mote.Glow = true;
+            Add(mote);
+            AddLight(p.X + dx * 0.5f, p.Y + dy * 0.5f, 3.4f, 0.5f, 1.0f, 0.7f);
         }
 
         /// <summary>
@@ -850,7 +964,7 @@ namespace TerminalHell
             Audio.PlayAt(Sfx.Explode, x, y, 1.2f, 0);
             foreach (var a in Actors)
             {
-                if (!a.Shootable) continue;
+                if (!a.Shootable || a == source) continue;
                 float d = a.DistTo(x, y) - a.Radius;
                 if (d < 0) d = 0;
                 if (d >= radius || !Map.LOS(x, y, a.X, a.Y)) continue;
@@ -938,12 +1052,19 @@ namespace TerminalHell
             }
             if (best != null)
             {
-                Audio.Play(Sfx.Punch, 0.9f, 0, 1, 0);
+                Audio.Play(d.Saw ? d.Sound : Sfx.Punch, 0.9f, 0, 1, d.Saw ? p.Tag : 0);
                 best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1) * damageMul, p, false);
                 if (best.Kind == ActorKind.Monster) SpawnBlood(best.X - dx * best.Radius, best.Y - dy * best.Radius, 0.5f, 3);
+                // the saw doesn't just have a chance of a flinch, like a bullet does - it forces one, for as long as it bites
+                var mon = best as Monster;
+                if (d.Saw && mon != null && mon.Alive && mon.State != MState.WindUp && mon.State != MState.Fire)
+                {
+                    mon.State = MState.Pain;
+                    mon.StateTime = mon.Def.PainTime;
+                }
                 return true;
             }
-            Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
+            if (!d.Saw) Audio.Play(Sfx.Swing, 0.7f, 0, 1, 0);
             return false;
         }
 
@@ -1004,10 +1125,10 @@ namespace TerminalHell
             }
         }
 
-        public void BossKilled()
+        public void BossKilled(string name)
         {
             BossDead = true;
-            Message("THE WARDEN HAS FALLEN! TAKE ITS KEY.", Col.Rgb(255, 220, 90));
+            Message("THE " + name + " HAS FALLEN! TAKE ITS KEY.", Col.Rgb(255, 220, 90));
             Shake(1.2f);
         }
     }

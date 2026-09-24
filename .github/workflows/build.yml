@@ -57,6 +57,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "npc chatter test failed" }
           .\bin\TerminalHell.exe --dev-automap-aim
           if ($LASTEXITCODE -ne 0) { throw "automap aim test failed" }
+          .\bin\TerminalHell.exe --dev-imp
+          if ($LASTEXITCODE -ne 0) { throw "lesser demon test failed" }
+          .\bin\TerminalHell.exe --dev-runway
+          if ($LASTEXITCODE -ne 0) { throw "runway level test failed" }
+          .\bin\TerminalHell.exe --dev-tower
+          if ($LASTEXITCODE -ne 0) { throw "tower level test failed" }
 
       - name: Soak test (random bot plays every level)
         shell: powershell

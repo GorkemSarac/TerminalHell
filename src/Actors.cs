@@ -53,6 +53,9 @@ namespace TerminalHell
         public Image[] Frames;
         public float MeleeChance;   // chance a ranged monster claws when close
         public bool Boss;
+        public bool FireBoss;        // a second kind of boss: fireball volleys, a bat-summoning scream, a self-centred nova
+        public bool Flies;           // hovers at HoverZ instead of walking the floor, and ignores lava
+        public float HoverZ = 0.55f;
         public float Height = 0.9f; // from the sprite: floor to top of the head
 
         void MeasureHeight()
@@ -63,7 +66,7 @@ namespace TerminalHell
             Height = (img.H - top) * Scale;
         }
 
-        public static MonsterDef Ghoul, Fiend, Brute, Warden;
+        public static MonsterDef Ghoul, Fiend, Brute, Warden, Imp, Bat, FireDemon;
 
         public static void Build()
         {
@@ -94,7 +97,31 @@ namespace TerminalHell
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.Rocket, Frames = Art.Warden,
                 Scale = 1f / 58, Boss = true, Drop = 'y', DropChance = 1f, Score = 5000,   // the key it carries always drops
             };
-            Ghoul.MeasureHeight(); Fiend.MeasureHeight(); Brute.MeasureHeight(); Warden.MeasureHeight();
+            Imp = new MonsterDef
+            {
+                // small, fast, and only dangerous up close: it closes distance quickly and claws
+                Name = "LESSER DEMON", Code = '\'', Health = 25, Speed = 2.9f, Radius = 0.22f, PainChance = 0.35f, Attack = AttackType.Melee,
+                Range = 1.3f, MeleeRange = 1.0f, WindUp = 0.22f, CoolMin = 0.5f, CoolMax = 1.0f, DmgMin = 6, DmgMax = 14,
+                Sight = Sfx.FiendSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.BruteBite, Drop = '\0',
+                Frames = Art.Imp, Scale = 1f / 76, Score = 150,
+            };
+            Bat = new MonsterDef
+            {
+                // a small flier that keeps its distance and spits venom - the machine gun earns its keep here
+                Name = "BAT DEMON", Health = 20, Speed = 2.4f, Radius = 0.2f, PainChance = 0.4f, Attack = AttackType.Projectile,
+                ProjType = Projectile.SPIT, ProjSpeed = 9f, Range = 15, WindUp = 0.4f, CoolMin = 1.3f, CoolMax = 2.4f, DmgMin = 4, DmgMax = 10,
+                Sight = Sfx.FiendSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.FiendThrow, Drop = '\0',
+                Frames = Art.Bat, Scale = 1f / 90, Flies = true, HoverZ = 0.6f, Score = 120,
+            };
+            FireDemon = new MonsterDef
+            {
+                // a smaller Warden built around fireballs instead of rockets: a volley, a summoning scream, a nova
+                Name = "ELDER FIRE DEMON", Health = 700, Speed = 1.4f, Radius = 0.5f, PainChance = 0.06f, Attack = AttackType.Projectile,
+                ProjType = Projectile.FIREBALL, ProjSpeed = 7f, Range = 22, WindUp = 1.0f, CoolMin = 1.8f, CoolMax = 2.8f, DmgMin = 15, DmgMax = 32, Shots = 3,
+                Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.ElderFireDemon,
+                Scale = 1f / 46, Boss = true, FireBoss = true, Drop = 'y', DropChance = 1f, Score = 3500,
+            };
+            Ghoul.MeasureHeight(); Fiend.MeasureHeight(); Brute.MeasureHeight(); Warden.MeasureHeight(); Imp.MeasureHeight(); Bat.MeasureHeight(); FireDemon.MeasureHeight();
         }
 
         public static MonsterDef For(char c)
@@ -105,6 +132,7 @@ namespace TerminalHell
                 case 'i': return Fiend;
                 case 'p': return Brute;
                 case 'K': return Warden;
+                case '\'': return Imp;
             }
             return null;
         }
@@ -122,6 +150,8 @@ namespace TerminalHell
         public bool Aiming, AimLocked;
         /// <summary>How long the boss holds its aim still before the rocket leaves: time enough to get out of the way.</summary>
         public const float AimLock = 0.55f;
+        /// <summary>Which of the fire boss's three attacks comes next: 0 volley, 1 scream+summon, 2 self-centred nova.</summary>
+        public int BossPattern = -1;   // so the first attack of the fight is the volley, not whatever (0+1)%3 would be
         public int StrafeDir = 1;
         public int ShotsLeft;
         public bool Ambush;
@@ -137,6 +167,7 @@ namespace TerminalHell
             Solid = true; Shootable = true;
             Scale = d.Scale;
             Cooldown = 0.5f;
+            if (d.Flies) Z = d.HoverZ;
         }
 
         public bool Alive { get { return State != MState.Dying && State != MState.Dead; } }
@@ -205,13 +236,14 @@ namespace TerminalHell
             // not every corpse leaves something behind: ammo is meant to be worth looking for
             if (Carries != '\0') w.SpawnItem(Carries, X + 0.05f, Y + 0.05f, true);
             else if (Def.Drop != '\0' && w.Rng.NextDouble() < Def.DropChance) w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
-            if (Def.Boss) w.BossKilled();
+            if (Def.Boss) w.BossKilled(Def.Name);
         }
 
         public override void Update(World w, float dt)
         {
             Flash = Math.Max(0, Flash - dt * 4);
             Anim += dt;
+            if (Def.Flies && Alive) Z = Def.HoverZ + (float)Math.Sin(Anim * 1.7 + Tag) * 0.06f;
             var p = w.P;
             float dx = p.X - X, dy = p.Y - Y;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
@@ -238,7 +270,7 @@ namespace TerminalHell
                 case MState.WindUp:
                     Angle = (float)Math.Atan2(dy, dx);
                     StateTime -= dt;
-                    if (Def.Boss && Def.Attack != AttackType.Melee)
+                    if (Def.Boss && !Def.FireBoss && Def.Attack != AttackType.Melee)
                     {
                         // the sight follows the player, then holds dead still for the last second before it fires
                         Aiming = true;
@@ -293,6 +325,12 @@ namespace TerminalHell
                     State = MState.WindUp;
                     StateTime = Def.WindUp * (melee ? 0.6f : 1f);
                     ShotsLeft = Def.Shots - 1;
+                    if (Def.FireBoss)
+                    {
+                        // cycle through the three signature attacks - only the volley is a multi-shot burst
+                        BossPattern = (BossPattern + 1) % 3;
+                        if (BossPattern != 0) ShotsLeft = 0;
+                    }
                     Angle = (float)Math.Atan2(dy, dx);
                     return;
                 }
@@ -404,6 +442,7 @@ namespace TerminalHell
         {
             var p = w.P;
             if (p.Dead) return;
+            if (Def.FireBoss && BossPattern != 0) { PerformFireBossSpecial(w); return; }
             bool melee = dist < Def.MeleeRange + p.Radius;
             if (Def.Attack == AttackType.Melee || (melee && Def.MeleeChance > 0 && w.Rng.NextDouble() < Def.MeleeChance))
             {
@@ -446,6 +485,32 @@ namespace TerminalHell
                 float travel = Math.Max(0.3f, reach) / Math.Max(1f, Def.ProjSpeed * w.ProjSpeedMul);
                 pr.VZ = (tz - pr.Z) / travel;
                 w.Add(pr);
+            }
+        }
+
+        /// <summary>The Elder Fire Demon's other two attacks: a bat-summoning scream, and a self-centred fire nova.</summary>
+        void PerformFireBossSpecial(World w)
+        {
+            if (BossPattern == 1)
+            {
+                Audio.PlayAt(Def.Sight, X, Y, 1.8f, Tag);
+                w.Shake(0.5f);
+                for (int i = 0; i < 3; i++)
+                {
+                    float a = (float)(w.Rng.NextDouble() * Math.PI * 2);
+                    float r = 2.2f + (float)w.Rng.NextDouble() * 1.6f;
+                    float sx = X + (float)Math.Cos(a) * r, sy = Y + (float)Math.Sin(a) * r;
+                    int cx = (int)sx, cy = (int)sy;
+                    if (!w.Map.In(cx, cy) || w.Map.BlocksMove(cx, cy)) continue;
+                    var bat = new Monster(MonsterDef.Bat, sx, sy);
+                    bat.Alert(w);
+                    w.Add(bat);
+                }
+            }
+            else
+            {
+                Audio.PlayAt(Def.AttackSnd, X, Y, 1.4f, Tag);
+                w.Explode(X, Y, 0.5f, Def.DmgMax * 1.5f, 4.5f, this);
             }
         }
     }
@@ -575,13 +640,14 @@ namespace TerminalHell
 
     sealed class Projectile : Actor
     {
-        public const int FIREBALL = 0, ROCKET = 1, BULLET = 2, RAY = 3;
+        public const int FIREBALL = 0, ROCKET = 1, BULLET = 2, RAY = 3, SPIT = 4, GRENADE = 5;
 
         public Actor Owner;
         public float VX, VY, VZ;  // VZ: climb rate (the player's rockets follow the look angle)
         public int Type;
         public int DmgMin = 8, DmgMax = 20;
         public float SplashDamage, SplashRadius;
+        public float Fuse;        // grenades only: explodes on its own once this reaches zero
         float life = 8;
 
         public Projectile(Actor owner, float x, float y, float angle, float speed, int type)
@@ -589,7 +655,7 @@ namespace TerminalHell
             Kind = ActorKind.Projectile;
             Owner = owner; X = x; Y = y; Type = type;
             VX = (float)Math.Cos(angle) * speed; VY = (float)Math.Sin(angle) * speed;
-            Radius = type == BULLET ? 0.08f : 0.12f;
+            Radius = type == BULLET ? 0.08f : type == SPIT ? 0.1f : type == GRENADE ? 0.14f : 0.12f;
             Z = 0.4f;
         }
 
@@ -601,6 +667,8 @@ namespace TerminalHell
                 case ROCKET: return Art.Rocket[f];
                 case BULLET: return Art.Bullet[f];
                 case RAY: return Art.RayBolt[f];
+                case SPIT: return Art.Spit[f];
+                case GRENADE: return Art.Grenade[f];
                 default: return Art.Fireball[f];
             }
         }
@@ -611,6 +679,7 @@ namespace TerminalHell
         {
             life -= dt;
             if (life <= 0) { Remove = true; return; }
+            if (Type == GRENADE) { UpdateGrenade(w, dt); return; }
             float speed = (float)Math.Sqrt(VX * VX + VY * VY);
             int steps = Math.Max(1, (int)(speed * dt / 0.08f) + 1);
             float sx = VX * dt / steps, sy = VY * dt / steps, sz = VZ * dt / steps;
@@ -641,6 +710,38 @@ namespace TerminalHell
             if (Type == RAY) w.AddLight(X, Y, 3.0f, 1.0f, 0.25f, 0.75f);
             else if (Type == BULLET) { }
             else w.AddLight(X, Y, Type == FIREBALL ? 2.6f : 2.2f, 1.0f, 0.45f, 0.12f);
+        }
+
+        const float GrenadeGravity = 3.4f;
+
+        /// <summary>The grenade launcher's alt-fire: bounces off walls and the floor, and goes off on its own
+        /// fuse - or at once if it clips a monster on the way.</summary>
+        void UpdateGrenade(World w, float dt)
+        {
+            Fuse -= dt;
+            VZ -= GrenadeGravity * dt;
+            float speed = (float)Math.Sqrt(VX * VX + VY * VY);
+            int steps = Math.Max(1, (int)((speed + Math.Abs(VZ)) * dt / 0.08f) + 1);
+            float sx = VX * dt / steps, sy = VY * dt / steps, sz = VZ * dt / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                float nx = X + sx, ny = Y + sy;
+                if (w.Map.BlocksMove((int)Math.Floor(nx), (int)Y)) { VX = -VX * 0.55f; sx = -sx; } else X = nx;
+                if (w.Map.BlocksMove((int)Math.Floor(X), (int)Math.Floor(ny))) { VY = -VY * 0.55f; sy = -sy; } else Y = ny;
+                Z += sz;
+                if (Z <= 0)
+                {
+                    Z = 0;
+                    if (VZ < -0.3f) { VZ = -VZ * 0.45f; Audio.PlayAt(Sfx.GrenadeBounce, X, Y, 0.7f, 0); }
+                    else VZ = 0;
+                    VX *= 0.8f; VY *= 0.8f;
+                }
+                else if (Z + 0.1f > 0.97f && !w.Map.IsOutdoor((int)X, (int)Y)) { Z = 0.85f; VZ = -Math.Abs(VZ) * 0.4f; }
+                var hit = w.ProjectileHit(this);
+                if (hit != null) { Impact(w, hit); return; }
+            }
+            if (Fuse <= 0) { Impact(w, null); return; }
+            w.AddLight(X, Y, 2.0f, 1.0f, 0.5f, 0.15f);
         }
 
         /// <summary>Knocked back by the player's fist: it flies home, faster and angrier.</summary>

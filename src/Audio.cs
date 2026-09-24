@@ -11,7 +11,8 @@ namespace TerminalHell
         Pistol, Shotgun, Chaingun, Rocket, Explode, Punch, Swing, DoorOpen, DoorClose, Pickup, WeaponPickup, KeyPickup, PowerUp,
         PlayerPain, PlayerDeath, GhoulSight, GhoulPain, GhoulDeath, GhoulShot, FiendSight, FiendPain, FiendDeath, FiendThrow,
         FireHit, BruteSight, BrutePain, BruteDeath, BruteBite, BossSight, BossPain, BossDeath, BossStep, Switch, NoWay,
-        PushWall, MenuMove, MenuSelect, DryFire, HurtFloor, Secret, WeaponUp, Growl, Jump, Land, Parry, RayGun, Chime, Count
+        PushWall, MenuMove, MenuSelect, DryFire, HurtFloor, Secret, WeaponUp, Growl, Jump, Land, Parry, RayGun, Chime,
+        Saw, Laser, GrenadeBounce, Count
     }
 
     static class Audio

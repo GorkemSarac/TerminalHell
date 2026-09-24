@@ -9,12 +9,12 @@ namespace TerminalHell
         // monster frame indices
         public const int WALK1 = 0, WALK2 = 1, AIM = 2, FIRE = 3, PAIN = 4, DIE1 = 5, DIE2 = 6, DIE3 = 7, DEAD = 8, FRAMES = 9;
 
-        public static Image[] Ghoul, Fiend, Brute, Warden;
+        public static Image[] Ghoul, Fiend, Brute, Warden, Imp, Bat, ElderFireDemon;
         public static Dictionary<char, Image> Items = new Dictionary<char, Image>();
         public static Image Barrel, Pillar, Corpse, BloodPool, Skulls, CeilLamp, TechLamp, BarrelDead, Pedestal;
         public static Image[] Torch = new Image[3];
-        public static Image[] Fireball = new Image[2], Rocket = new Image[2], Explosion = new Image[6], Puff = new Image[3], Blood = new Image[3];
-        public static Image[] Bullet = new Image[2], RayBolt = new Image[2];
+        public static Image[] Fireball = new Image[2], Rocket = new Image[2], Explosion = new Image[6], Puff = new Image[3], Blood = new Image[3], Grenade = new Image[2];
+        public static Image[] Bullet = new Image[2], RayBolt = new Image[2], Spit = new Image[2];
         public static Image[] Soulsphere = new Image[2];
         public static Image[] Keys = new Image[4];
 
@@ -32,6 +32,15 @@ namespace TerminalHell
             Warden = new Image[FRAMES];
             for (int f = 0; f <= PAIN; f++) Warden[f] = DrawWarden(f);
             MakeDeath(Warden, Col.Rgb(120, 16, 10), 4);
+            Imp = new Image[FRAMES];
+            for (int f = 0; f <= PAIN; f++) Imp[f] = DrawImp(f);
+            MakeDeath(Imp, Col.Rgb(110, 14, 8), 5);
+            Bat = new Image[FRAMES];
+            for (int f = 0; f <= PAIN; f++) Bat[f] = DrawBat(f);
+            MakeDeath(Bat, Col.Rgb(90, 20, 60), 6);
+            ElderFireDemon = new Image[FRAMES];
+            for (int f = 0; f <= PAIN; f++) ElderFireDemon[f] = DrawElderFireDemon(f);
+            MakeDeath(ElderFireDemon, Col.Rgb(140, 30, 8), 7);
 
             BuildItems();
             BuildDecor();
@@ -419,6 +428,195 @@ namespace TerminalHell
             return c.Done();
         }
 
+        /// <summary>The lesser demon: small, fast, and quadrupedal-leaning - it closes distance low to the
+        /// ground and claws whatever it reaches. No gun, no fireball: just speed and teeth.</summary>
+        static Image DrawImp(int frame)
+        {
+            var c = new Canvas(32, 36);
+            c.NoiseSeed = 51;
+            c.NoiseAmt = 0.1f;
+            int skin = Col.Rgb(96, 30, 26), dark = Col.Rgb(56, 16, 16), claw = Col.Rgb(220, 210, 190), eye = Col.Rgb(255, 220, 40);
+            float step = frame == WALK1 ? 1 : frame == WALK2 ? -1 : 0;
+            float bob = step != 0 ? -1.4f : 0;
+            bool lunge = frame == AIM || frame == FIRE;
+            float crouch = frame == AIM ? 2 : frame == FIRE ? -2 : 0;
+            float tilt = frame == PAIN ? -3 : 0;
+            float lUp = step > 0 ? 3.2f : 0, rUp = step < 0 ? 3.2f : 0;
+
+            // hind legs, bent and coiled - always ready to spring
+            c.Limb(11, 22 + bob + crouch, 3.4f, 8 - lUp * 0.5f, 29 - lUp * 0.5f, 2.6f, skin);
+            c.Limb(8 - lUp * 0.5f, 29 - lUp * 0.5f, 2.6f, 10, 34 - lUp, 2, dark);
+            c.Limb(21, 22 + bob + crouch, 3.4f, 24 + rUp * 0.5f, 29 - rUp * 0.5f, 2.6f, skin);
+            c.Limb(24 + rUp * 0.5f, 29 - rUp * 0.5f, 2.6f, 22, 34 - rUp, 2, dark);
+            for (int k = -1; k <= 1; k++)
+            {
+                c.Limb(10, 34.5f - lUp, 0.9f, 10 + k * 1.8f, 36 - lUp, 0.5f, claw);
+                c.Limb(22, 34.5f - rUp, 0.9f, 22 + k * 1.8f, 36 - rUp, 0.5f, claw);
+            }
+
+            // a low, hunched torso - the head sits almost level with the shoulders
+            float ty = bob + crouch;
+            c.Ball(16, 19 + ty, 7.2f, 6, skin);
+            c.Ball(16, 23 + ty, 5, 3.6f, dark);
+            for (int r = 0; r < 2; r++) c.Line(12, 17 + r * 2.4f + ty, 20, 17 + r * 2.4f + ty, 0.7f, Sh(dark, 0.85f));
+
+            // head thrust forward on a short neck, mouth wide, small horns
+            float hx = 16 + tilt + (lunge ? 3 : 0), hy = 14 + ty;
+            c.Ball(hx, hy, 5.2f, 4.6f, skin);
+            c.Poly(new float[] { hx - 3, hy - 3, hx - 5.5f, hy - 8, hx - 1.5f, hy - 4 }, claw, Sh(claw, 0.7f));
+            c.Poly(new float[] { hx + 3, hy - 3, hx + 5.5f, hy - 8, hx + 1.5f, hy - 4 }, claw, Sh(claw, 0.7f));
+            c.Ball(hx - 2, hy - 0.5f, 1.3f, 1, eye | Col.EMISSIVE, false);
+            c.Ball(hx + 2, hy - 0.5f, 1.3f, 1, eye | Col.EMISSIVE, false);
+            c.Ball(hx, hy + 3.2f, 3.6f, 2.2f, dark, false);
+            for (int t = 0; t < 4; t++) c.Rect(hx - 2.7f + t * 1.8f, hy + 2, 1, 1.6f, claw);
+
+            // front limbs: long and clawed, they take the animal's weight when it runs, and lead the lunge
+            if (lunge)
+            {
+                c.Limb(9, 20 + ty, 2.6f, hx - 4, hy + 1, 2, skin);
+                c.Limb(hx - 4, hy + 1, 2, hx - 7, hy - 1, 1, dark);
+                c.Limb(23, 20 + ty, 2.6f, hx + 4, hy + 1, 2, skin);
+                c.Limb(hx + 4, hy + 1, 2, hx + 7, hy - 1, 1, dark);
+                for (int k = -1; k <= 1; k++)
+                {
+                    c.Limb(hx - 7, hy - 1, 0.8f, hx - 7 + k * 1.6f, hy - 3.6f, 0.4f, claw);
+                    c.Limb(hx + 7, hy - 1, 0.8f, hx + 7 + k * 1.6f, hy - 3.6f, 0.4f, claw);
+                }
+            }
+            else
+            {
+                c.Limb(9, 20 + ty, 2.6f, 6 - lUp * 0.4f, 27 - lUp * 0.4f, 2, skin);
+                c.Limb(6 - lUp * 0.4f, 27 - lUp * 0.4f, 2, 7, 31 - lUp, 1, dark);
+                c.Limb(23, 20 + ty, 2.6f, 26 + rUp * 0.4f, 27 - rUp * 0.4f, 2, skin);
+                c.Limb(26 + rUp * 0.4f, 27 - rUp * 0.4f, 2, 25, 31 - rUp, 1, dark);
+            }
+            if (frame == PAIN) Splatter(c, 105, 10, 11, 15, 21, 19, Col.Rgb(120, 12, 8));
+            c.Outline(Col.Rgb(8, 4, 4));
+            return c.Done();
+        }
+
+        /// <summary>The bat demon: membrane wings, a small hunched body, no legs worth drawing since it never lands.</summary>
+        static Image DrawBat(int frame)
+        {
+            var c = new Canvas(42, 30);
+            c.NoiseSeed = 61;
+            c.NoiseAmt = 0.08f;
+            int skin = Col.Rgb(80, 24, 64), wing = Col.Rgb(56, 14, 46), bone = Col.Rgb(210, 200, 180), eye = Col.Rgb(255, 200, 60);
+            float flap = frame == WALK1 ? -6 : frame == WALK2 ? 6 : 0;
+            bool spit = frame == AIM || frame == FIRE;
+            float open = frame == FIRE ? 1 : 0;
+            float ty = (float)Math.Abs(flap) * -0.15f;
+
+            // wings: broad membranes on bony struts, flapping oppositely each frame
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float wx = 21 + side * 6, wy = 15 + ty;
+                float tipx = wx + side * (14 + flap * side), tipy = wy - 7 - flap;
+                float midx = wx + side * (9 + flap * side * 0.6f), midy = wy - 2 - flap * 0.5f;
+                c.Poly(new float[] { wx, wy, tipx, tipy, midx, midy }, wing, Sh(wing, 0.6f));
+                c.Poly(new float[] { wx, wy, midx, midy, wx + side * 5, wy + 6 }, wing, Sh(wing, 0.55f));
+                c.Line(wx, wy, tipx, tipy, 0.8f, bone);
+                c.Line(wx, wy, midx, midy, 0.7f, Sh(bone, 0.85f));
+                for (int k = -1; k <= 1; k++) c.Limb(tipx - side * k * 3, tipy + k * 2, 0.5f, wx + side * 4, wy + 3, 0.4f, bone);
+            }
+
+            // a small hunched body, hanging between the wings
+            c.Ball(21, 16 + ty, 5.4f, 5.6f, skin);
+            c.Ball(21, 20.5f + ty, 3.4f, 3, Sh(skin, 0.85f));
+            for (int k = -1; k <= 1; k += 2) c.Limb(21 + k * 3, 20 + ty, 1, 21 + k * 5, 24 + ty, 0.6f, wing);
+
+            // head: big ears, glowing eyes, a mouth that opens to spit
+            float hy = 11 + ty;
+            c.Ball(21, hy, 4.6f, 4, skin);
+            c.Poly(new float[] { 18, hy - 2, 15, hy - 8, 19.5f, hy - 3 }, skin, Sh(skin, 0.7f));
+            c.Poly(new float[] { 24, hy - 2, 27, hy - 8, 22.5f, hy - 3 }, skin, Sh(skin, 0.7f));
+            c.Ball(19, hy - 0.5f, 1.1f, 1, eye | Col.EMISSIVE, false);
+            c.Ball(23, hy - 0.5f, 1.1f, 1, eye | Col.EMISSIVE, false);
+            c.Ball(21, hy + 2.6f, 2.4f + open * 0.8f, 1.4f + open * 1.6f, Col.Rgb(30, 8, 10), false);
+            if (spit) c.Ball(21, hy + 3 + open * 2, 1.1f, 1.1f, Col.Rgb(140, 200, 60) | Col.EMISSIVE, false);
+            for (int t = 0; t < 3; t++) c.Rect(19.5f + t * 1.2f, hy + 1.6f, 0.7f, 1, bone);
+            if (frame == PAIN) Splatter(c, 111, 8, 15, 8, 27, 18, Col.Rgb(130, 20, 70));
+            c.Outline(Col.Rgb(10, 4, 10));
+            return c.Done();
+        }
+
+        /// <summary>The Elder Fire Demon: a lesser boss built like a bulkier, taller fiend - the same fireballs, a lot more of them.</summary>
+        static Image DrawElderFireDemon(int frame)
+        {
+            var c = new Canvas(60, 74);
+            c.NoiseSeed = 71;
+            c.NoiseAmt = 0.1f;
+            int skin = Col.Rgb(160, 70, 40), dark = Col.Rgb(100, 40, 24), bone = Col.Rgb(230, 210, 170), ember = Col.Rgb(255, 160, 40);
+            float step = frame == WALK1 ? 1 : frame == WALK2 ? -1 : 0;
+            float bob = step != 0 ? -1.5f : 0;
+            float tilt = frame == PAIN ? -3 : 0;
+            bool casting = frame == AIM || frame == FIRE;
+            float lUp = step > 0 ? 4 : 0, rUp = step < 0 ? 4 : 0;
+
+            // thick digitigrade legs
+            c.Limb(24, 46 + bob, 6, 20 - lUp * 0.5f, 58 - lUp * 0.5f, 5, skin);
+            c.Limb(20 - lUp * 0.5f, 58 - lUp * 0.5f, 5, 22, 68 - lUp, 3.6f, dark);
+            c.Limb(36, 46 + bob, 6, 40 + rUp * 0.5f, 58 - rUp * 0.5f, 5, skin);
+            c.Limb(40 + rUp * 0.5f, 58 - rUp * 0.5f, 5, 38, 68 - rUp, 3.6f, dark);
+            for (int k = -1; k <= 1; k++)
+            {
+                c.Limb(22, 69 - lUp, 1.6f, 22 + k * 3, 72 - lUp, 1, bone);
+                c.Limb(38, 69 - rUp, 1.6f, 38 + k * 3, 72 - rUp, 1, bone);
+            }
+
+            // a broad, cracked torso glowing at the seams
+            float ty = bob;
+            c.Ball(30, 34 + ty, 13.5f, 14, skin);
+            c.Ball(30, 42 + ty, 9.5f, 6, dark);
+            for (int r = 0; r < 3; r++)
+            {
+                c.Line(22, 27 + r * 3.2f + ty, 27, 28 + r * 3.2f + ty, 1.1f, Col.Scale(ember, 0.9f) | Col.EMISSIVE);
+                c.Line(38, 27 + r * 3.2f + ty, 33, 28 + r * 3.2f + ty, 1.1f, Col.Scale(ember, 0.9f) | Col.EMISSIVE);
+            }
+            c.Ball(30, 33 + ty, 3.4f, 3.4f, ember | Col.EMISSIVE, false);
+
+            // shoulder spikes, bigger than the fiend's
+            float[] sp = { 17, 26, 13, 15, 20, 20, 43, 26, 47, 15, 40, 20 };
+            for (int s = 0; s < sp.Length; s += 6) c.Poly(new float[] { sp[s], sp[s + 1], sp[s + 2], sp[s + 3], sp[s + 4], sp[s + 5] }, bone, Sh(bone, 0.65f));
+
+            // a heavy, horned head
+            float hx = 30 + tilt, hy = 16 + ty;
+            c.Ball(hx, hy, 8.2f, 8.6f, skin);
+            c.Poly(new float[] { hx - 6, hy - 4, hx - 12, hy - 15, hx - 3.5f, hy - 6 }, bone, Sh(bone, 0.75f));
+            c.Poly(new float[] { hx + 6, hy - 4, hx + 12, hy - 15, hx + 3.5f, hy - 6 }, bone, Sh(bone, 0.75f));
+            c.Rect(hx - 6.5f, hy - 2, 13, 2, Sh(dark, 0.7f));
+            c.Ball(hx - 3.2f, hy + 0.6f, 2.2f, 1.6f, ember | Col.EMISSIVE, false);
+            c.Ball(hx + 3.2f, hy + 0.6f, 2.2f, 1.6f, ember | Col.EMISSIVE, false);
+            c.Ball(hx, hy + 5.6f, 4.2f, 2.4f, Col.Rgb(40, 8, 6), false);
+            for (int t = 0; t < 5; t++) c.Rect(hx - 3.4f + t * 1.8f, hy + 4.2f, 1.1f, 1.8f, bone);
+
+            // arms: both raised and burning when casting, otherwise hanging
+            if (casting)
+            {
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    c.Limb(30 + side * 12, 28 + ty, 4.6f, 30 + side * 20, 14 + ty, 3.8f, skin);
+                    c.Limb(30 + side * 20, 14 + ty, 3.8f, 30 + side * 24, 4 + ty, 3, dark);
+                    c.Glow(30 + side * 24, 2 + ty, 6.5f, Col.Rgb(255, 245, 200), Col.Rgb(255, 90, 10));
+                }
+            }
+            else
+            {
+                c.Limb(30 - 13, 26 + ty, 4.4f, 30 - 17, 42 + ty, 3.6f, skin);
+                c.Limb(30 - 17, 42 + ty, 3.6f, 30 - 15, 52 + ty, 2.8f, dark);
+                c.Limb(30 + 13, 26 + ty, 4.4f, 30 + 17, 42 + ty, 3.6f, skin);
+                c.Limb(30 + 17, 42 + ty, 3.6f, 30 + 15, 52 + ty, 2.8f, dark);
+                for (int k = -1; k <= 1; k++)
+                {
+                    c.Limb(30 - 15, 53 + ty, 1.3f, 30 - 15 + k * 2.4f, 57 + ty, 0.8f, bone);
+                    c.Limb(30 + 15, 53 + ty, 1.3f, 30 + 15 + k * 2.4f, 57 + ty, 0.8f, bone);
+                }
+            }
+            if (frame == PAIN) Splatter(c, 116, 18, 20, 22, 40, 34, Col.Rgb(150, 30, 8));
+            c.Outline(Col.Rgb(14, 8, 6));
+            return c.Done();
+        }
+
         // ================================================================ items
 
         static void BuildItems()
@@ -741,6 +939,18 @@ namespace TerminalHell
                 c.Glow(8, 8, 3.6f + f * 0.5f, Col.Rgb(255, 255, 255), Col.Rgb(255, 90, 180));
                 c.Ball(8, 8, 1.8f, 1.8f, Col.Rgb(255, 255, 255) | Col.EMISSIVE, false);
                 RayBolt[f] = c.Done();
+                // the bat demon's spit: a wet glob of venom, dripping as it flies
+                c = new Canvas(10, 10);
+                c.Ball(5, 5, 3.4f - f * 0.3f, 2.8f + f * 0.3f, Col.Rgb(140, 200, 60));
+                c.Ball(4, 4, 1.2f, 1, Col.Rgb(210, 240, 140) | Col.EMISSIVE, false);
+                c.Ball(6, 7 + f, 1, 1.4f - f * 0.5f, Col.Rgb(110, 160, 40), false);
+                Spit[f] = c.Done();
+                // a grenade, tumbling: a dark canister with a spoon lever and a spark of fuse light
+                c = new Canvas(9, 9);
+                c.Ball(4.5f, 4.5f, 3, 3, Col.Rgb(64, 78, 56));
+                c.Rect(3.7f, 1, 1.6f, 1.6f, Col.Rgb(120, 120, 116));
+                c.Ball(4.5f + (f == 0 ? -1.4f : 1.4f), 4.5f, 0.8f, 0.8f, Col.Rgb(255, 160, 60) | Col.EMISSIVE, false);
+                Grenade[f] = c.Done();
             }
             for (int f = 0; f < 6; f++)
             {
@@ -784,7 +994,7 @@ namespace TerminalHell
         public static List<Image> All()
         {
             var l = new List<Image>();
-            l.AddRange(Ghoul); l.AddRange(Fiend); l.AddRange(Brute); l.AddRange(Warden);
+            l.AddRange(Ghoul); l.AddRange(Fiend); l.AddRange(Brute); l.AddRange(Warden); l.AddRange(Imp); l.AddRange(Bat); l.AddRange(ElderFireDemon);
             foreach (var kv in Items) l.Add(kv.Value);
             l.Add(Barrel); l.Add(Pillar); l.Add(TechLamp); l.Add(CeilLamp); l.AddRange(Torch); l.Add(Corpse); l.Add(BloodPool); l.Add(Skulls); l.Add(BarrelDead);
             l.AddRange(Fireball); l.AddRange(Rocket); l.AddRange(Explosion); l.AddRange(Puff); l.AddRange(Blood);

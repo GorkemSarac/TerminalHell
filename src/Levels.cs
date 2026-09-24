@@ -61,9 +61,9 @@ namespace TerminalHell
         /// <summary>Every level, episode 1 first. Each one knows which episode it belongs to.</summary>
         public static LevelDef[] All()
         {
-            var list = new[] { Terminal(), Hell1(), Hell2(), Hell3() };
-            list[0].Episode = 0;
-            for (int i = 1; i < list.Length; i++) list[i].Episode = 1;
+            var list = new[] { Terminal(), Runway(), Tower(), Hell1(), Hell2(), Hell3() };
+            list[0].Episode = 0; list[1].Episode = 0; list[2].Episode = 0;
+            for (int i = 3; i < list.Length; i++) list[i].Episode = 1;
             return list;
         }
 
@@ -119,8 +119,8 @@ namespace TerminalHell
                 "VVVVVVVVVVVVVVF..*...*u..HVVVVVVVVVVVVVI_f_____*_____IVVVVVVVVVV",
                 "VVVVVVVVVVVVVVF..........AVVVVVVVVVVVVVI____T________IVVVVVVVVVV",
                 "VVVVVVVVVVVVVVF.u..{....jAVVVVVVVVVVVVVI___z_@__s____IVVVVVVVVVV",
-                "VVVVVVVVVVVVVVF..........AVVVVVVVVIIIIII_s__*_____z__I..VVVVVVVV",
-                "VVVVVVVVVVVVVVF......u.s.HVVVVVVVVI_m__I__s____@____d$bwVVVVVVVV",
+                "VVVVVVVVVVVVVVF..........AVVVVVVVVIIIIII_s__*_____z_dI..VVVVVVVV",
+                "VVVVVVVVVVVVVVF......u.s.HVVVVVVVVI_m__I__s____@_____$bwVVVVVVVV",
                 "VVVVVVVVVVVVVVFn...[....jAVVVVVVVVIG_w_$*____s______sI..VVVVVVVV",
                 "VVVVVVVVVVVVVVF..*...*..lAVVVVVVVVI_c__I_@_______T___IVVVVVVVVVV",
                 "VVVVVVVVVVVVVVF.s........AVVVVVVVVIIIIII___sh_____*@_IVVVVVVVVVV",
@@ -153,13 +153,104 @@ namespace TerminalHell
             };
         }
 
+        static LevelDef Runway()
+        {
+            return new LevelDef
+            {
+                Id = "E1M2", Name = "RUNWAY", Music = 7, Sky = 3,
+                Intro = "THE WAY DEEPER IN IS BLOCKED. THE ONLY WAY IS OUT ONTO THE FIELD.",
+                FloorA = Tex.F_AIR, CeilA = Tex.C_AIR, FloorB = Tex.F_GRATE, CeilB = Tex.C_STONE, FloorOut = Tex.F_RUNWAY,
+                Ambient = Col.Rgb(96, 96, 100), SkyLight = Col.Rgb(150, 152, 156), FogColor = Col.Rgb(70, 70, 74), FogDensity = 0.03f, Par = "5:30",
+                // the runway looks like it keeps going past where the map actually ends - it doesn't
+                WallOverrides = new[]
+                {
+                    new[] { 65, 16, Tex.RUNWAY_END }, new[] { 65, 17, Tex.RUNWAY_END }, new[] { 65, 18, Tex.RUNWAY_END },
+                    new[] { 65, 19, Tex.RUNWAY_END }, new[] { 65, 20, Tex.RUNWAY_END }, new[] { 65, 21, Tex.RUNWAY_END }, new[] { 65, 22, Tex.RUNWAY_END },
+                },
+                Map = new[]
+                {
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVAAAAAAAAAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA...........AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA.n.........AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA...........AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA..^.....u..AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA...........AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVA...........AAAAAAAAAVVVVVVVVVVVVVVVVVVVAAAAAAAAAAAVVVVVVVVVVVVVVVVVV",
+                "VVVA...........A___*___AVVVVVVVVVVVVVVVVVVVA.........AVVVVVVVVVVVVVVVVVV",
+                "VVVAAAAAA%.AADAA__c_s__AVVVVVVVVVVVVVVVVVVVA.m*....c.AVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVV))V...A___y___AVVVVVVVVVVVVVVVVVVVA..z......XVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVV..V...A_z_____AVVVVVVVVVVVVVVVVVVVA......z..AVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVr.V...A_____z_AVVVVVVVVVVVVVVVVVVVA...'..*..AVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVV.*V...A_______AVVVVVVVVVVVVVVVVVVVA.........AVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVV..V...AAAADAAAAVVZZZZZZZZZVVVVVVVVAAAAARAAAAAVVVVVVVVVVVVVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z_______Z,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z*__z___Z,%,,,T,s,,,',,,*,,,,,,,',z,,,,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z_e_____Z,,,',,,,,,,,,,,,,T,,,,,,,,,),,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Y___S___D,,,,,,,,,,,,,,,,,,,',,,,,,,,s,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z_____E_Z,,,*,,,',,,,,,,,,,,,,,,,,*',,,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z___z__*Z,z,,,,,,,),,,%,',,,,,s,,,,,,,,VVVVVVV",
+                "VV,,,,,,,,,,,,,,,,,,,,,,,,Z_______Z,,,,,,,,,,,,,,,,,,,,,%,,,,,,,,VVVVVVV",
+                "VVVVVVVVVVVVVVVZZZZDZZZZVVZZZZZZZZZVVVVVVVVVVVVVVVVVVVVV$VVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_______ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV_____VVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_%_*_%_ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV_aw__VVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_____z_ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV___U_VVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_q_%___ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV_____VVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_______ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZZZZZZZZZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                },
+            };
+        }
+
+        static LevelDef Tower()
+        {
+            return new LevelDef
+            {
+                Id = "E1M3", Name = "TOWER", Music = 8, Sky = 4,
+                Intro = "PART OF THE CEILING IS GONE. THE TOWER IS RIGHT THERE, TOO CLOSE TO IGNORE.",
+                FloorA = Tex.F_AIR, CeilA = Tex.C_AIR, FloorB = Tex.F_METAL, CeilB = Tex.C_PANEL, FloorC = Tex.F_WRECK, CeilC = Tex.C_WRECK, FloorOut = Tex.F_APRON,
+                Ambient = Col.Rgb(112, 106, 108), SkyLight = Col.Rgb(232, 192, 160), FogColor = Col.Rgb(36, 22, 18), FogDensity = 0.026f, Par = "8:30",
+                // the exit itself is a normal door - the portal is just what's glowing on the wall past it
+                WallOverrides = new[] { new[] { 124, 10, Tex.HELL_PORTAL } },
+                Map = new[]
+                {
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV33333333333333333VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVAAAAAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3333333333333333VVVVVVVVVV333333333V3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVAAAAAAAAAAAAAAAAVA.......AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3______________3VVVVVVVVVV3_______3V3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA..............AVA.*.r...AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3_C_____m_'__t_3VVVVVVVVVV3___C___3V3,m,,,,,,,,,,,,,3VVVVVVV",
+                "VVA.u.,,,,,......AVA.....|.AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3__z__%_____z__3VVVVVVVVVV3_z_____3V3,,,|,,,,,,,|,,,3VVVVVVV",
+                "VVA...,,,,,..z...AVA.z.....AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3_t____________3VVVVVVVVVV3_____'_3V3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA...,,,,,......AVA.......AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3__a|'_____%_e_3VVVVVVVVVV3_m_____3V3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA..h,,,,,......AVA.......AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3______________3VVVVVVVVVV3_______3V3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA...,,,,,......AVAAAADAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV33333333D3333333VVVVVVVVVV3333D3333V3,,,,,,,,,,,,,,,3333333V",
+                "VVA.....)........A..z..........z........z3333______________________________________z__________________3,,,,,,,,,,,,,,,3----33V",
+                "VVA..............D......................__R.B________________________________________________________zD,!,,,,,,,,,,,!,Y----X3V",
+                "VVA..............A.........c....C......._3333__'______________________________________%___'___________3,,,,,,,,,,,,,,,3----33V",
+                "VVA.........'....AVVVVVVVVVVVVAAAADAAAAVVVVVVVVVVV3333333D3333333VVVVVVVVVVVVVVVVVVV33$333VVVVVVVVVVVV3,,,,,,,,,,,,,,,3333333V",
+                "VVA..^........c..AVVVVVVVVVVVVA.......AVVVVVVVVVVV3_____________3VVVVVVVVVVVVVVVVVVV3____3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA..............AVVVVVVVVVVVVA.......AVVVVVVVVVVV3__t_______t__3VVVVVVVVVVVVVVVVVVV3_w__3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVA..............AVVVVVVVVVVVVA.'.....AVVVVVVVVVVV3___C__N__C___3VVVVVVVVVVVVVVVVVVV3__a_3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVAAAAAAAAAAAAAAAAVVVVVVVVVVVVA.....|.AVVVVVVVVVVV3_____________3VVVVVVVVVVVVVVVVVVV3____3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVA.*.b...AVVVVVVVVVVV3__z_______'__3VVVVVVVVVVVVVVVVVVV333333VVVVVVVVVVVV3,,,|,,,,,,,|,,,3VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVA.......AVVVVVVVVVVV3_____%_______3VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3,h,,,,,,,,,,,G,3VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVA.......AVVVVVVVVVVV3_____________3VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAAAAAAVVVVVVVVVVV333333333333333VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV33333333333333333VVVVVVV",
+                "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                },
+            };
+        }
+
 
         static LevelDef Hell1()
         {
             return new LevelDef
             {
-                Id = "E2M1", Name = "OUTPOST GATE", Music = 1,
-                Intro = "THE RELAY OUTPOST WENT DARK THREE HOURS AGO.",
+                Id = "E2M1", Name = "OUTPOST OF HELL", Music = 1,
+                Intro = "THE PORTAL DROPS YOU AT A RUINED OUTPOST. THIS IS HELL'S FRONT DOOR.",
                 FloorA = Tex.F_TILE, CeilA = Tex.C_PANEL, FloorB = Tex.F_METAL, CeilB = Tex.C_STONE, FloorOut = Tex.F_DIRT,
                 Ambient = Col.Rgb(82, 79, 86), SkyLight = Col.Rgb(240, 190, 160), FogColor = Col.Rgb(10, 4, 3), FogDensity = 0.05f, Par = "2:30",
                 Map = new[]
@@ -186,7 +277,7 @@ namespace TerminalHell
                 "3333___3333_____33332,,,;;;;;,,,,,,,,,,0",
                 "3333___3333__z__33332,,,,e,,,,,,,,,,|,,0",
                 "33......&.3_____33332,,,,,%,%,,,,,,,,,,0",
-                "33...*....3e_*__33332,,,,,,S,,,,,,,,,,,0",
+                "33...*....3e_*__33332,,,,,,C,,,,,,,,,,,0",
                 "33........D_____3__G2,,,,,,,,,,,,,,z,,,0",
                 "33...^....3_____$_w_2,,,,,,,,,,,,,,,,,,0",
                 "33a......c3%___%3aa_2,&,,,,,,,,,,,,,,m,0",
@@ -202,8 +293,8 @@ namespace TerminalHell
         {
             return new LevelDef
             {
-                Id = "E2M2", Name = "TOXIC REFINERY", Music = 2, Sky = 1,
-                Intro = "THE REFINERY PUMPS SOMETHING THAT IS NOT OIL.",
+                Id = "E2M2", Name = "HELL LABS", Music = 2, Sky = 1,
+                Intro = "DEEPER IN, SOMETHING WAS BEING MADE HERE. IT DIDN'T STOP WHEN THE MAKERS DID.",
                 FloorA = Tex.F_METAL, CeilA = Tex.C_PANEL, FloorB = Tex.F_GRATE, CeilB = Tex.C_STONE, FloorOut = Tex.F_GRATE,
                 Ambient = Col.Rgb(68, 78, 68), SkyLight = Col.Rgb(135, 125, 165), FogColor = Col.Rgb(4, 12, 4), FogDensity = 0.072f, Par = "3:30",
                 Map = new[]
@@ -225,7 +316,7 @@ namespace TerminalHell
                 "8______8h......................C8.z....7",
                 "8_====_8..|.z.*.......p..*...|..8......8",
                 "8_====_D.......%...e...%...z....8.....G7",
-                "8_=N_=_8..........z.............8......8",
+                "8_=C_=_8..........z.............8......8",
                 "8_====_8;;;;,,;;;;;;;;;;;;,,;;;;8....z.7",
                 "8_====_8;;;;,,;;;;;;;;;;;;,,;;;;8......8",
                 "8e____*8........................8&.*...7",
@@ -249,7 +340,7 @@ namespace TerminalHell
             return new LevelDef
             {
                 Id = "E2M3", Name = "GATES OF HELL", Music = 3,
-                Intro = "THE GATE IS OPEN. THE WARDEN IS WAITING.",
+                Intro = "THE LAST GATE IS OPEN. THE WARDEN IS WAITING BEYOND IT.",
                 FloorA = Tex.F_HELL, CeilA = Tex.C_FLESH, FloorB = Tex.F_MARBLE, CeilB = Tex.C_STONE, FloorOut = Tex.F_HELL,
                 Ambient = Col.Rgb(98, 64, 58), SkyLight = Col.Rgb(240, 150, 115), FogColor = Col.Rgb(26, 4, 2), FogDensity = 0.052f, Par = "5:00",
                 Map = new[]

@@ -205,8 +205,8 @@ namespace TerminalHell
             float t = p.FireAnim;
             bool firing = t < WeaponDef.All[weapon].Anim + 0.05f;
 
-            // minigun barrels spin up while firing and spin down afterwards
-            if (weapon == 3 && t < 0.15f) spinSpeed = Math.Min(40, spinSpeed + dt * 160);
+            // minigun barrels (and the saw's blade) spin up while firing and spin down afterwards
+            if ((weapon == 3 || weapon == 1) && t < 0.15f) spinSpeed = Math.Min(40, spinSpeed + dt * 160);
             else spinSpeed = Math.Max(0, spinSpeed - dt * 30);
             spin += spinSpeed * dt;
 
@@ -217,11 +217,15 @@ namespace TerminalHell
             float recoil = 0, kickUp = 0;
             switch (weapon)
             {
-                case 1: recoil = Kick(t, 0.02f, 16) * 1.0f; break;
-                case 2: recoil = Kick(t, 0.02f, 9) * 2.0f; break;
+                case 2: recoil = Kick(t, 0.02f, 16) * 1.0f; break;
                 case 3: recoil = t < 0.1f ? 0.45f + 0.25f * (float)Math.Sin(time * 90) : 0; break;
-                case 4: recoil = Kick(t, 0.03f, 7) * 2.6f; break;
-                case 5: recoil = Kick(t, 0.04f, 8) * 2.2f; break;
+                case 4: recoil = Kick(t, 0.02f, 9) * 2.0f; break;
+                case 5: recoil = Kick(t, 0.02f, 7) * 3.0f; break;
+                case 6: recoil = firing ? 0.12f + 0.1f * (float)Math.Sin(time * 70) : 0; break;
+                case 7: recoil = Kick(t, 0.03f, 8) * 2.4f; break;
+                case 8: recoil = Kick(t, 0.03f, 7) * 2.6f; break;
+                case 9: recoil = Kick(t, 0.03f, 7) * 2.0f; break;
+                case 10: recoil = Kick(t, 0.04f, 8) * 2.2f; break;
             }
             kickUp = recoil;
             float sw = p.SwitchPos;
@@ -231,10 +235,15 @@ namespace TerminalHell
             switch (weapon)
             {
                 case 0: ox = 0.12f; oy = -0.1f; oz = 0.36f; break;
-                case 1: ox = 0.118f; oy = -0.075f; oz = 0.45f; break;
+                case 1: ox = 0.116f; oy = -0.085f; oz = 0.4f; break;
+                case 2: ox = 0.118f; oy = -0.075f; oz = 0.45f; break;
                 case 3: oy = -0.11f; oz = 0.46f; break;
-                case 4: ox = 0.14f; oy = -0.115f; oz = 0.5f; break;
-                case 5: ox = 0.128f; oy = -0.1f; oz = 0.44f; break;
+                case 5: ox = 0.135f; oy = -0.1f; oz = 0.4f; break;
+                case 6: ox = 0.124f; oy = -0.09f; oz = 0.42f; break;
+                case 7: ox = 0.13f; oy = -0.1f; oz = 0.46f; break;
+                case 8: ox = 0.14f; oy = -0.115f; oz = 0.5f; break;
+                case 9: ox = 0.135f; oy = -0.11f; oz = 0.44f; break;
+                case 10: ox = 0.128f; oy = -0.1f; oz = 0.44f; break;
             }
             // the parry: a backhand bash that winds the weapon in, then sweeps it out to the right
             float arc = SwingArc(p.PunchAnim);
@@ -261,10 +270,15 @@ namespace TerminalHell
             switch (weapon)
             {
                 case 0: muzzle = BuildFists(root, t); break;
-                case 1: muzzle = BuildPistol(root); break;
-                case 2: muzzle = BuildShotgun(root, t); break;
+                case 1: muzzle = BuildSaw(root, spin); break;
+                case 2: muzzle = BuildPistol(root); break;
                 case 3: muzzle = BuildMinigun(root, spin); break;
-                case 4: muzzle = BuildLauncher(root, t); break;
+                case 4: muzzle = BuildShotgun(root, t); break;
+                case 5: muzzle = BuildDoubleShotgun(root, t); break;
+                case 6: muzzle = BuildLaserBeam(root, firing, time); break;
+                case 7: muzzle = BuildLaserRay(root, t); break;
+                case 8: muzzle = BuildLauncher(root, t); break;
+                case 9: muzzle = BuildGrenadeLauncher(root, t); break;
                 default: muzzle = BuildRayGun(root, t, time, Math.Min(1, p.Charge / Player.RayChargeTime)); break;
             }
 
@@ -272,7 +286,8 @@ namespace TerminalHell
             // size the weapon by the view height so it looks the same in wide or tall windows
             float fy = (viewH * 0.5f) / (float)Math.Tan(21 * Math.PI / 180), fx = fy / aspect;
             float cx = W * 0.5f, cy = viewH * 0.5f;
-            bool flash = weapon != 0 && t < (weapon == 2 || weapon == 4 ? 0.08f : 0.055f);
+            bool bigFlash = weapon == 4 || weapon == 5 || weapon == 8 || weapon == 9;
+            bool flash = weapon != 0 && weapon != 1 && t < (bigFlash ? 0.08f : 0.055f);
             float lit = light + (flash ? 0.6f : 0);
             foreach (var tri in mb.Tris) Raster(s.Pix, W, viewH, tri, fx, fy, cx, cy, lit);
 
@@ -290,7 +305,7 @@ namespace TerminalHell
             if (flash && muzzle.Z > 0.05f)
             {
                 float mx = cx + muzzle.X / muzzle.Z * fx, my = cy - muzzle.Y / muzzle.Z * fy;
-                float r = (weapon == 2 || weapon == 4 ? 0.034f : 0.022f) / muzzle.Z * fx;
+                float r = (bigFlash ? 0.034f : 0.022f) / muzzle.Z * fx;
                 FlashGlow(s, W, viewH, mx, my, Math.Max(2, r), aspect, time);
             }
         }
@@ -450,6 +465,131 @@ namespace TerminalHell
             mb.Box(0, -0.012f, 0, 0.02f, 0.016f, 0.036f, Glove);
             Arm(m, new V3(-0.025f, -0.035f, 0.24f), new V3(-0.1f, -0.11f, 0.05f));
             return m.Point(new V3(0, 0.035f, 0.5f));
+        }
+
+        /// <summary>The grenade launcher: a short, stubby break-action tube - the rocket launcher's squat cousin.</summary>
+        static V3 BuildGrenadeLauncher(Mat m, float t)
+        {
+            mb.M = m;
+            mb.Cyl(new V3(0, 0.03f, -0.02f), new V3(0, 0.03f, 0.3f), 0.04f, 0.04f, 14, Dark, false);                        // tube
+            mb.Cyl(new V3(0, 0.03f, 0.08f), new V3(0, 0.03f, 0.1f), 0.0405f, 0.0405f, 14, Col.Rgb(210, 170, 40), false);   // hazard band
+            mb.Cyl(new V3(0, 0.03f, 0.29f), new V3(0, 0.03f, 0.33f), 0.04f, 0.05f, 14, Col.Scale(Metal, 0.9f), false);     // muzzle
+            mb.Cyl(new V3(0, 0.03f, 0.325f), new V3(0, 0.03f, 0.326f), 0.044f, 0.044f, 14, Black, true);
+            if (t > 0.32f) mb.Ball(0, 0.03f, 0.3f, 0.028f, 0.028f, 0.024f, Col.Rgb(64, 78, 56));   // the next grenade, loaded
+            mb.Cyl(new V3(0, 0.03f, -0.03f), new V3(0, 0.03f, -0.02f), 0.043f, 0.043f, 14, Dark, true);
+            // a stubby iron sight, no scope
+            mb.Box(0, 0.075f, 0.1f, 0.006f, 0.012f, 0.006f, Dark);
+            var grip = m.Mul(Mat.Translate(0, -0.012f, 0.02f)).Mul(Mat.RotX(-0.24f));
+            mb.M = grip;
+            mb.Box(0, -0.03f, 0, 0.013f, 0.032f, 0.018f, Dark);
+            Hand(grip, 0.002f, -0.036f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.062f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            var left = m.Mul(Mat.Translate(-0.01f, -0.018f, 0.17f)).Mul(Mat.RotZ(0.7f));
+            mb.M = left;
+            mb.Box(0, -0.012f, 0, 0.018f, 0.014f, 0.03f, Glove);
+            Arm(m, new V3(-0.022f, -0.03f, 0.16f), new V3(-0.1f, -0.1f, 0.03f));
+            return m.Point(new V3(0, 0.03f, 0.34f));
+        }
+
+        /// <summary>The saw: a handheld angular frame around a spinning blade.</summary>
+        static V3 BuildSaw(Mat m, float spin)
+        {
+            mb.M = m;
+            mb.Box(0, 0, 0, 0.02f, 0.028f, 0.05f, Dark);                                          // motor housing
+            mb.Box(0.024f, 0.006f, -0.03f, 0.006f, 0.014f, 0.012f, Metal);                        // pull-start knob
+            var blade = m.Mul(Mat.Translate(0, 0.006f, 0.11f)).Mul(Mat.RotZ(spin));
+            mb.M = blade;
+            mb.Cyl(new V3(0, 0, -0.004f), new V3(0, 0, 0.004f), 0.062f, 0.062f, 16, Steel, false);
+            for (int k = 0; k < 10; k++)
+            {
+                double a = k * Math.PI / 5;
+                mb.Box((float)Math.Cos(a) * 0.062f, (float)Math.Sin(a) * 0.062f, 0, 0.008f, 0.008f, 0.006f, Col.Scale(Steel, 1.2f));
+            }
+            mb.M = m;
+            mb.Box(0, 0.02f, 0.05f, 0.005f, 0.014f, 0.06f, Dark);                                  // guide bar the blade rides on
+            var grip = m.Mul(Mat.Translate(0, -0.028f, -0.01f)).Mul(Mat.RotX(-0.15f));
+            mb.M = grip;
+            mb.Box(0, -0.03f, 0, 0.014f, 0.03f, 0.02f, Col.Rgb(40, 38, 36));
+            Hand(grip, 0.002f, -0.036f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.06f, -0.03f), new V3(0.05f, -0.14f, -0.15f));
+            var left = m.Mul(Mat.Translate(-0.006f, 0.006f, 0.02f)).Mul(Mat.RotZ(0.3f));
+            mb.M = left;
+            mb.Box(0, -0.01f, 0, 0.018f, 0.014f, 0.026f, Glove);
+            Arm(m, new V3(-0.018f, -0.02f, 0.02f), new V3(-0.09f, -0.09f, -0.05f));
+            return m.Point(new V3(0, 0.006f, 0.16f));
+        }
+
+        static readonly int LaserMetal = Col.Rgb(70, 90, 110), LaserGlow = Col.Rgb(90, 220, 255);
+
+        /// <summary>The laser: a sleek tech barrel around a lens that glows brighter while it burns.</summary>
+        static V3 BuildLaserBeam(Mat m, bool firing, float time)
+        {
+            int glow = Col.Lerp(Col.Rgb(30, 70, 90), LaserGlow, firing ? 0.85f + 0.15f * (float)Math.Sin(time * 40) : 0.15f);
+            mb.M = m;
+            mb.Box(0, 0.02f, 0.0f, 0.024f, 0.03f, 0.09f, LaserMetal);                              // body
+            mb.Cyl(new V3(0, 0.024f, 0.08f), new V3(0, 0.024f, 0.34f), 0.02f, 0.017f, 12, Col.Scale(LaserMetal, 0.85f), false);   // tapered barrel
+            mb.Cyl(new V3(0, 0.024f, 0.08f), new V3(0, 0.024f, 0.34f), 0.021f, 0.018f, 12, Dark, false, 0, false);
+            mb.Ball(0, 0.024f, 0.345f, 0.016f, 0.016f, 0.012f, glow, true);                        // the lens
+            for (int k = 0; k < 3; k++) mb.Cyl(new V3(0, 0.024f, 0.13f + k * 0.06f), new V3(0, 0.024f, 0.15f + k * 0.06f), 0.0215f, 0.0215f, 12, Col.Scale(LaserMetal, 1.1f), false);
+            mb.Box(0, 0.05f, 0.0f, 0.006f, 0.012f, 0.03f, glow, true);                              // a charge indicator along the top
+            var grip = m.Mul(Mat.Translate(0, -0.02f, -0.01f)).Mul(Mat.RotX(-0.25f));
+            mb.M = grip;
+            mb.Box(0, -0.036f, 0, 0.013f, 0.036f, 0.019f, Dark);
+            Hand(grip, 0.002f, -0.042f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.068f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            return m.Point(new V3(0, 0.024f, 0.35f));
+        }
+
+        /// <summary>The laser ray: bulkier, with a horizontal emitter bar instead of a single lens.</summary>
+        static V3 BuildLaserRay(Mat m, float t)
+        {
+            float charge = Math.Min(1, t / 0.4f);
+            int glow = Col.Lerp(LaserGlow, Col.Rgb(255, 255, 255), t < 0.06f ? 1 - t / 0.06f : 0);
+            mb.M = m;
+            mb.Box(0, 0.03f, -0.02f, 0.03f, 0.036f, 0.1f, LaserMetal);                             // body
+            mb.Box(0, 0.03f, 0.12f, 0.036f, 0.01f, 0.014f, Col.Scale(LaserMetal, 0.85f));          // the emitter bar, wider than it is tall
+            mb.Box(-0.032f, 0.03f, 0.12f, 0.006f, 0.014f, 0.016f, glow, true);
+            mb.Box(0.032f, 0.03f, 0.12f, 0.006f, 0.014f, 0.016f, glow, true);
+            mb.Cyl(new V3(0, 0.03f, -0.03f), new V3(0, 0.03f, 0.02f), 0.032f, 0.032f, 10, Dark, true);   // a capacitor drum on the back
+            mb.Box(0, 0.058f, -0.02f, 0.008f, 0.01f, 0.05f, Col.Lerp(Col.Scale(LaserGlow, 0.4f), LaserGlow, charge), true);   // charge glow along the top
+            var grip = m.Mul(Mat.Translate(0, -0.02f, 0.01f)).Mul(Mat.RotX(-0.24f));
+            mb.M = grip;
+            mb.Box(0, -0.034f, 0, 0.014f, 0.034f, 0.02f, Dark);
+            Hand(grip, 0.002f, -0.04f, -0.004f, true);
+            Arm(grip, new V3(0.005f, -0.065f, -0.03f), new V3(0.05f, -0.15f, -0.16f));
+            var left = m.Mul(Mat.Translate(-0.01f, -0.01f, 0.05f)).Mul(Mat.RotZ(0.6f));
+            mb.M = left;
+            mb.Box(0, -0.012f, 0, 0.018f, 0.015f, 0.03f, Glove);
+            Arm(m, new V3(-0.022f, -0.025f, 0.04f), new V3(-0.1f, -0.1f, -0.02f));
+            return m.Point(new V3(0, 0.03f, 0.13f));
+        }
+
+        /// <summary>The double barrel shotgun: side-by-side barrels, a break action, and a heavier stock.</summary>
+        static V3 BuildDoubleShotgun(Mat m, float t)
+        {
+            float breakOpen = t > 0.5f && t < 0.85f ? 0.25f * (float)Math.Sin(Math.PI * (t - 0.5f) / 0.35f) : 0;
+            mb.M = m;
+            mb.Box(0, 0.02f, 0.02f, 0.022f, 0.028f, 0.07f, Dark);                                  // receiver
+            var barrels = m.Mul(Mat.Translate(0, 0.035f, 0.09f)).Mul(Mat.RotX(breakOpen));
+            mb.M = barrels;
+            mb.Cyl(new V3(-0.013f, 0, 0), new V3(-0.013f, 0, 0.42f), 0.012f, 0.012f, 10, Metal, true);
+            mb.Cyl(new V3(0.013f, 0, 0), new V3(0.013f, 0, 0.42f), 0.012f, 0.012f, 10, Metal, true);
+            mb.Box(0, -0.002f, 0.2f, 0.02f, 0.006f, 0.16f, Col.Scale(Metal, 0.85f));                // rib between the barrels
+            mb.Box(-0.013f, 0, 0.4205f, 0.007f, 0.007f, 0.0008f, Black);
+            mb.Box(0.013f, 0, 0.4205f, 0.007f, 0.007f, 0.0008f, Black);
+            mb.Box(0, 0.014f, 0.41f, 0.002f, 0.0025f, 0.002f, Col.Rgb(230, 220, 170));              // bead sight
+            mb.M = m;
+            var stock = m.Mul(Mat.Translate(0, 0.006f, -0.05f)).Mul(Mat.RotX(-0.2f));
+            mb.M = stock;
+            mb.Box(0, -0.022f, -0.02f, 0.016f, 0.032f, 0.032f, Wood);                              // pistol grip / wrist, heavier than the pump gun's
+            Hand(stock, 0.002f, -0.032f, -0.01f, true);
+            Arm(stock, new V3(0.006f, -0.058f, -0.04f), new V3(0.05f, -0.15f, -0.18f));
+            var left = m.Mul(Mat.Translate(-0.004f, 0.01f, 0.24f)).Mul(Mat.RotZ(0.6f));
+            mb.M = left;
+            mb.Box(0, -0.012f, 0, 0.02f, 0.016f, 0.036f, Glove);
+            for (int k = 0; k < 4; k++) mb.Ball(0.022f, -0.004f, -0.024f + k * 0.016f, 0.008f, 0.012f, 0.0075f, Col.Scale(Glove, 1.04f));
+            Arm(m, new V3(-0.02f, -0.02f, 0.22f), new V3(-0.1f, -0.1f, 0.08f));
+            return m.Point(new V3(0, 0.035f, 0.51f));
         }
 
         /// <summary>The ray gun: a spine of bone and sinew with something burning caged inside it.</summary>

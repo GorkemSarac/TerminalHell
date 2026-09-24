@@ -17,7 +17,9 @@ namespace TerminalHell
         public const int TERM = 38, GLASS = 39, BOARD = 40, SCORCH = 41, SHATTER = 42, DEADBOARD = 43, SAFE = 44, SAFECROSS = 45, CONCRETE = 46, HANGAR = 47;
         public const int SECRET2_BASE = 48, DOORLIT2_BASE = 58, DOOR_PASS = 68;
         public const int DOOR_EXIT = 69;    // the exit's own door, styled differently from a normal one
-        public const int WALL_COUNT = 70;
+        public const int RUNWAY_END = 70;   // a forced-perspective illusion of the runway going on past a dead end
+        public const int HELL_PORTAL = 71;  // an exit styled as a portal into hell, for the level before the descent
+        public const int WALL_COUNT = 72;
 
         /// <summary>The "this one slides away" version of a wall texture (secret push walls).</summary>
         public static int SecretOf(int tex)
@@ -39,14 +41,17 @@ namespace TerminalHell
         public const int F_TILE = 0, F_METAL = 1, F_DIRT = 2, F_WOOD = 3, F_HELL = 4, F_LAVA = 5, F_NUKAGE = 6;
         public const int C_PANEL = 7, C_STONE = 8, C_WOOD = 9, F_GRATE = 10, F_MARBLE = 11, C_FLESH = 12;
         public const int F_AIR = 13, F_WRECK = 14, F_SAFE = 15, F_APRON = 16, C_AIR = 17, C_WRECK = 18, C_SAFE = 19;
-        public const int FLAT_COUNT = 20;
+        public const int F_RUNWAY = 20;
+        public const int FLAT_COUNT = 21;
 
         public static Image[] Walls = new Image[WALL_COUNT];
         public static Image[] Flats = new Image[FLAT_COUNT];
         public static Image Sky;          // red hell sky
         public static Image SkyNight;     // darker sky variant
         public static Image SkyEarth;     // blue daytime sky over the airport
-        public static Image[] Skies = new Image[3];
+        public static Image SkyOvercast;  // the same airport under low grey cloud
+        public static Image SkyTower;     // the control tower seen up close through a broken ceiling, burning
+        public static Image[] Skies = new Image[5];
 
         public static void Build()
         {
@@ -70,6 +75,7 @@ namespace TerminalHell
             Walls[DOOR_YELLOW] = DoorTex(Col.Rgb(255, 210, 40));
             Walls[JAMB] = JambTex();
             Walls[DOOR_EXIT] = ExitDoorTex();
+            Walls[HELL_PORTAL] = HellPortalTex();
             Walls[0] = Walls[STONE];
             for (int t = STONE; t <= ROCK; t++)
             {
@@ -94,7 +100,7 @@ namespace TerminalHell
             Sky = MakeSky(Col.Rgb(40, 4, 8), Col.Rgb(210, 70, 20), Col.Rgb(255, 170, 60), 5);
             SkyNight = MakeSky(Col.Rgb(4, 4, 18), Col.Rgb(60, 30, 70), Col.Rgb(160, 70, 60), 9);
             BuildAirport();
-            Skies[0] = Sky; Skies[1] = SkyNight; Skies[2] = SkyEarth;
+            Skies[0] = Sky; Skies[1] = SkyNight; Skies[2] = SkyEarth; Skies[3] = SkyOvercast; Skies[4] = SkyTower;
         }
 
         static int Px(Image im, int x, int y) { return im.Px[(y & Mask) * S + (x & Mask)]; }
@@ -452,6 +458,32 @@ namespace TerminalHell
                 im.Px[y * S + 6] = Col.Rgb(80, 255, 120) | Col.OPAQUE | Col.EMISSIVE;
                 im.Px[y * S + S - 7] = Col.Rgb(80, 255, 120) | Col.OPAQUE | Col.EMISSIVE;
             }
+            return im;
+        }
+
+        /// <summary>The exit from the last earth level: not a door at all anymore, but a rift into hell itself,
+        /// swirling and unstable, set into the same kind of frame a real door would have.</summary>
+        static Image HellPortalTex()
+        {
+            var im = new Image(S, S);
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    int c = Vary(Col.Rgb(40, 36, 34), 0.85f + Noise.Hashf(x, y, 141) * 0.3f);
+                    bool frame = x < 4 || x >= S - 4 || y < 3 || y >= S - 3;
+                    if (frame) { Set(im, x, y, c); continue; }
+                    float cx = (x - S / 2f) / (S / 2f - 4), cy = (y - S / 2f) / (S / 2f - 3);
+                    float r = (float)Math.Sqrt(cx * cx + cy * cy);
+                    double ang = Math.Atan2(cy, cx) + r * 3.4;
+                    float swirl = Noise.Fbm((float)(Math.Cos(ang) * 8 + 8), (float)(Math.Sin(ang) * 8 + 8 + r * 30), 16, 4, 4, 142);
+                    int hot = Col.Lerp(Col.Rgb(255, 200, 90), Col.Rgb(255, 90, 20), swirl);
+                    int deep = Col.Lerp(Col.Rgb(140, 10, 10), Col.Rgb(30, 4, 8), Math.Min(1, r * 1.1f));
+                    int p = Col.Lerp(hot, deep, Math.Min(1, r * 0.9f + swirl * 0.15f));
+                    if (r > 0.92f) p = Col.Lerp(p, Col.Rgb(20, 14, 14), Math.Min(1, (r - 0.92f) * 8));
+                    Set(im, x, y, p | Col.EMISSIVE);
+                }
+            // bolts holding the frame together, same as an ordinary door's
+            for (int y = 0; y < S; y += 20) { Set(im, 1, y, Col.Rgb(90, 84, 78)); Set(im, S - 2, y, Col.Rgb(90, 84, 78)); }
             return im;
         }
 

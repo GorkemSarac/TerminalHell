@@ -17,6 +17,7 @@ namespace TerminalHell
             Walls[SAFECROSS] = SafeWall(true);
             Walls[CONCRETE] = ConcreteWall();
             Walls[HANGAR] = HangarWall();
+            Walls[RUNWAY_END] = RunwayEndWall();
             Walls[DOOR_PASS] = DoorTex(Col.Rgb(50, 225, 200));
             for (int t = TERM; t <= HANGAR; t++)
             {
@@ -28,11 +29,14 @@ namespace TerminalHell
             Flats[F_WRECK] = TerminalFloor(true);
             Flats[F_SAFE] = SafeFloor();
             Flats[F_APRON] = ApronFloor();
+            Flats[F_RUNWAY] = RunwayFloor();
             Flats[C_AIR] = TerminalCeiling(false);
             Flats[C_WRECK] = TerminalCeiling(true);
             Flats[C_SAFE] = SafeCeiling();
 
             SkyEarth = MakeEarthSky();
+            SkyOvercast = MakeOvercastSky();
+            SkyTower = MakeTowerSky();
         }
 
         static float Smooth01(float a, float b, float x)
@@ -405,6 +409,58 @@ namespace TerminalHell
             return im;
         }
 
+        /// <summary>Not a real opening: a flat painted illusion of the runway carrying on into the haze,
+        /// with a rockslide making sure nobody tries to find out.</summary>
+        static Image RunwayEndWall()
+        {
+            var im = new Image(S, S);
+            int horizon = 30;
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    int c;
+                    if (y < horizon)
+                    {
+                        float t = (float)y / horizon;
+                        c = Col.Lerp(Col.Rgb(150, 152, 156), Col.Rgb(190, 192, 194), t);
+                        float haze = Noise.Fbm(x, y * 2, S, 6, 4, 611);
+                        if (haze > 0.55f) c = Col.Lerp(c, Col.Rgb(205, 206, 208), Math.Min(1, (haze - 0.55f) * 3));
+                    }
+                    else
+                    {
+                        // the tarmac converging to a vanishing point, fading into fog the further away it gets
+                        float fromHorizon = (y - horizon) / (float)(S - horizon);
+                        float half = (0.5f - fromHorizon * 0.46f);
+                        float u = (x / (float)S - 0.5f);
+                        bool onRoad = Math.Abs(u) < half;
+                        c = Col.Rgb(58, 58, 62);
+                        if (onRoad)
+                        {
+                            float n = Noise.Fbm(x, y, S, 8, 3, 612);
+                            c = Vary(Col.Rgb(56, 56, 60), 0.8f + n * 0.3f);
+                            float laneW = half * 0.14f;
+                            if (Math.Abs(u) < laneW && ((int)(fromHorizon * 26) % 2) == 0) c = Vary(Col.Rgb(205, 204, 194), 0.8f + n * 0.2f);
+                        }
+                        float fog = Math.Min(1, fromHorizon < 0.4f ? (0.4f - fromHorizon) * 2.4f : 0);
+                        c = Col.Lerp(c, Col.Rgb(150, 152, 156), fog);
+                    }
+                    Set(im, x, y, c | Col.EMISSIVE);
+                }
+            // the rockslide: a heap of broken concrete piled across the bottom, closing it off for good
+            for (int x = 0; x < S; x++)
+            {
+                float top = S - 14 - Noise.Fbm(x, 0, S, 4, 4, 613) * 10;
+                for (int y = (int)top; y < S; y++)
+                {
+                    float shade = 0.6f + Noise.Fbm(x, y, S, 6, 3, 614) * 0.5f;
+                    int rc = Vary(Col.Rgb(120, 116, 108), shade);
+                    if (Noise.Hashf(x, y, 615) > 0.93f) rc = Vary(rc, 1.3f);
+                    im.Px[y * S + x] = rc | Col.OPAQUE;
+                }
+            }
+            return im;
+        }
+
         // ---------------------------------------------------------------- floors and ceilings
 
         /// <summary>Polished terminal floor in big cream tiles. The wrecked version is scorched, cracked and littered.</summary>
@@ -489,6 +545,35 @@ namespace TerminalHell
                     float oil = Noise.Fbm(x * 2, y * 2, S, 4, 3, 422);
                     if (oil > 0.6f) c = Col.Lerp(c, Col.Rgb(44, 44, 48), Math.Min(1, (oil - 0.6f) * 4) * 0.7f);
                     if (Noise.Hashf(x, y, 423) > 0.985f) c = Vary(c, 1.25f);
+                    Set(im, x, y, c);
+                }
+            return im;
+        }
+
+        /// <summary>The runway itself: worn dark asphalt, tar patches, tire-skid smudges and a dashed white
+        /// centerline running through it - distinct from the plain grey apron near the terminal.</summary>
+        static Image RunwayFloor()
+        {
+            var im = new Image(S, S);
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float n = Noise.Fbm(x, y, S, 8, 4, 601);
+                    int c = Vary(Col.Rgb(54, 54, 58), 0.78f + n * 0.32f);
+                    // tar patch seams, coarser and darker than the apron's
+                    float patch = Noise.Fbm(x * 1.4f, y * 1.4f, S, 5, 4, 602);
+                    if (patch > 0.58f) c = Col.Lerp(c, Col.Rgb(30, 30, 33), Math.Min(1, (patch - 0.58f) * 2.6f) * 0.75f);
+                    // rubber skid streaks, angled
+                    float skid = Noise.Fbm(x * 0.6f + y * 1.8f, y * 0.5f, S, 4, 3, 603);
+                    if (skid > 0.64f) c = Col.Lerp(c, Col.Rgb(20, 20, 22), Math.Min(1, (skid - 0.64f) * 3f) * 0.6f);
+                    if (Noise.Hashf(x, y, 604) > 0.99f) c = Vary(c, 1.3f);
+                    // the dashed white centerline
+                    if (y >= 29 && y < 35 && (x % 20) < 12)
+                    {
+                        int line = Col.Rgb(210, 208, 196);
+                        if (y == 29 || y == 34) line = Vary(line, 0.55f);
+                        c = Vary(line, 0.85f + n * 0.2f);
+                    }
                     Set(im, x, y, c);
                 }
             return im;
@@ -610,6 +695,96 @@ namespace TerminalHell
                 {
                     float g = 0.75f + Noise.Hashf(x, y, 455) * 0.5f;
                     im.Px[y * SKY_W + x] = (Col.Rgb((int)(50 * g), (int)(88 * g), (int)(58 * g)) | Col.OPAQUE | Col.EMISSIVE);
+                }
+            return im;
+        }
+
+        /// <summary>The same airport horizon, under a flat grey overcast: no sun, no blue, a low uniform ceiling of cloud.</summary>
+        static Image MakeOvercastSky()
+        {
+            var im = new Image(SKY_W, SKY_H);
+            var hills = new float[SKY_W];
+            var trees = new float[SKY_W];
+            for (int x = 0; x < SKY_W; x++)
+            {
+                hills[x] = SKY_H - 14 - Noise.Fbm(x, 0, SKY_W, 3, 4, 461) * 14 - Noise.Fbm(x, 5, SKY_W, 12, 3, 462) * 3;
+                trees[x] = SKY_H - 8 - Noise.Fbm(x, 9, SKY_W, 24, 3, 463) * 4;
+            }
+            for (int y = 0; y < SKY_H; y++)
+                for (int x = 0; x < SKY_W; x++)
+                {
+                    float t = (float)y / SKY_H;
+                    // a dull grey ceiling, darker overhead, paler toward the horizon - never blue, never bright
+                    int c = t < 0.62f ? Col.Lerp(Col.Rgb(96, 98, 102), Col.Rgb(140, 142, 146), t / 0.62f)
+                                      : Col.Lerp(Col.Rgb(140, 142, 146), Col.Rgb(182, 182, 180), (t - 0.62f) / 0.38f);
+                    // low, heavy cloud with soft edges instead of distinct puffs - it reads as one unbroken ceiling
+                    float cl = Noise.Fbm(x, y * 1.6f, SKY_W, 5, 5, 464);
+                    c = Col.Lerp(c, Col.Rgb(118, 120, 124), Math.Max(0, cl - 0.3f) * 1.1f);
+                    float dark = Noise.Fbm(x * 2, y * 2.2f, SKY_W, 8, 4, 465);
+                    if (dark > 0.6f) c = Col.Lerp(c, Col.Rgb(80, 82, 88), Math.Min(1, (dark - 0.6f) * 2f) * 0.5f);
+                    // hills, muted with no daylight to catch
+                    if (y > hills[x]) c = Col.Lerp(Col.Rgb(100, 104, 106), Col.Rgb(80, 84, 88), (y - hills[x]) / 12);
+                    im.Px[y * SKY_W + x] = c | Col.OPAQUE | Col.EMISSIVE;
+                }
+            // the same control tower and hangars, flat and shadowless under the cloud
+            Box(im, 58, SKY_H - 34, 4, 26, Col.Rgb(150, 152, 156));
+            Box(im, 55, SKY_H - 40, 10, 7, Col.Rgb(76, 90, 100));
+            Box(im, 54, SKY_H - 41, 12, 2, Col.Rgb(120, 122, 126));
+            Box(im, 60, SKY_H - 46, 1, 5, Col.Rgb(120, 122, 126));
+            for (int k = 0; k < 4; k++) Box(im, 92 + k * 22, SKY_H - 18, 18, 6, Col.Lerp(Col.Rgb(130, 132, 138), Col.Rgb(108, 112, 118), k / 3f));
+            Box(im, 120, SKY_H - 22, 40, 4, Col.Rgb(134, 136, 140));
+            for (int x = 0; x < SKY_W; x++)
+                for (int y = (int)trees[x]; y < SKY_H; y++)
+                {
+                    float g = 0.6f + Noise.Hashf(x, y, 466) * 0.35f;
+                    im.Px[y * SKY_W + x] = Col.Rgb((int)(46 * g), (int)(60 * g), (int)(48 * g)) | Col.OPAQUE | Col.EMISSIVE;
+                }
+            return im;
+        }
+
+        /// <summary>The control tower up close, through the hole in the ceiling: smoke, fire, broken glass, no sky left to speak of.</summary>
+        static Image MakeTowerSky()
+        {
+            var im = new Image(SKY_W, SKY_H);
+            for (int y = 0; y < SKY_H; y++)
+                for (int x = 0; x < SKY_W; x++)
+                {
+                    float t = (float)y / SKY_H;
+                    // a smoke-choked dusk, lit orange from below by whatever is burning
+                    int c = t < 0.5f ? Col.Lerp(Col.Rgb(40, 32, 36), Col.Rgb(70, 56, 54), t / 0.5f)
+                                      : Col.Lerp(Col.Rgb(70, 56, 54), Col.Rgb(120, 74, 48), (t - 0.5f) / 0.5f);
+                    float smoke = Noise.Fbm(x, y * 1.8f, SKY_W, 6, 5, 471);
+                    c = Col.Lerp(c, Col.Rgb(54, 46, 46), Math.Max(0, smoke - 0.25f) * 0.9f);
+                    im.Px[y * SKY_W + x] = c | Col.OPAQUE | Col.EMISSIVE;
+                }
+            // the tower, filling most of the frame - this is "up close", not a skyline silhouette
+            int tx0 = 78, tw = 96;
+            Box(im, tx0, SKY_H - 92, tw, 92, Col.Rgb(74, 68, 66));
+            Box(im, tx0 - 6, SKY_H - 30, tw + 12, 30, Col.Rgb(58, 54, 54));
+            // the observation deck: a wider band near the top, ringed with windows
+            Box(im, tx0 - 14, SKY_H - 92, tw + 28, 22, Col.Rgb(88, 80, 76));
+            Box(im, tx0 - 16, SKY_H - 96, tw + 32, 5, Col.Rgb(96, 88, 82));
+            for (int wx = tx0 - 10; wx < tx0 + tw + 10; wx += 6)
+            {
+                bool lit = ((wx * 7) & 3) != 0;
+                Box(im, wx, SKY_H - 86, 3, 10, lit ? Col.Rgb(255, 140, 40) : Col.Rgb(30, 24, 22));
+            }
+            // body windows in ragged columns, mostly dark, some still burning
+            for (int wy = SKY_H - 66; wy < SKY_H - 6; wy += 9)
+                for (int wx = tx0 + 6; wx < tx0 + tw - 6; wx += 10)
+                {
+                    int h = (int)(Noise.Hashf(wx, wy, 472) * 7);
+                    if (h < 3) Box(im, wx, wy, 4, 5, Col.Rgb(255, 120, 30));
+                    else Box(im, wx, wy, 4, 5, Col.Rgb(36, 32, 32));
+                }
+            // smoke plumes rising off the top
+            for (int x = 0; x < SKY_W; x++)
+                for (int y = 0; y < SKY_H - 90; y++)
+                {
+                    float plume = Noise.Fbm(x * 0.7f, y * 2.2f + 40, SKY_W, 5, 4, 474);
+                    float near = 1 - Math.Min(1, Math.Abs(x - (tx0 + tw / 2)) / 70f);
+                    float amt = Math.Max(0, plume - 0.35f) * near * (1 - (float)y / (SKY_H - 90));
+                    if (amt > 0) im.Px[y * SKY_W + x] = Col.Lerp(im.Px[y * SKY_W + x], Col.Rgb(60, 54, 52), Math.Min(1, amt * 1.6f)) | Col.OPAQUE | Col.EMISSIVE;
                 }
             return im;
         }

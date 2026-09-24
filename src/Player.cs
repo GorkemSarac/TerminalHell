@@ -7,8 +7,9 @@ namespace TerminalHell
     sealed class WeaponDef
     {
         public string Name;
-        public int Slot;
-        public int Ammo = -1;        // -1 none, 0 bullets, 1 shells, 2 rockets, 3 soul cells
+        public int Slot;             // 1..6: which key selects this weapon's slot
+        public int SlotPos;          // 0 primary, 1 secondary - which one a re-press of the slot key toggles to
+        public int Ammo = -1;        // -1 none, 0 bullets, 1 shells, 2 rockets, 3 soul cells, 4 energy cells
         public float Cooldown;
         public int Pellets = 1;
         public float Spread;
@@ -16,38 +17,65 @@ namespace TerminalHell
         public bool Melee, Rocket, Ray;
         public Sfx Sound;
         public float Anim;           // length of the firing animation
+        public int Barrels = 1;      // ammo units spent per shot (the double barrel fires 2, or 1 if that's all that's left)
+        public float Knockback;      // shoves the player backwards on firing
+        public bool Saw;             // a continuous melee weapon that forces enemies into a pain flinch, not just a chance of one
+        public bool Beam;            // a laser held down: drains ammo and deals damage per second instead of per shot
+        public float DrainPerSec, DmgPerSec;
+        public bool LineHit;         // the other laser: one slow shot that hits every enemy along the line, not just the first
+        public bool Grenade;         // the launcher's alt-fire: a bouncing, fused projectile instead of a straight rocket
 
         public static readonly WeaponDef[] All =
         {
-            new WeaponDef { Name = "FIST", Slot = 1, Cooldown = 0.42f, DmgMin = 8, DmgMax = 22, Melee = true, Sound = Sfx.Punch, Anim = 0.42f },
-            new WeaponDef { Name = "PISTOL", Slot = 2, Ammo = 0, Cooldown = 0.34f, Spread = 0.02f, DmgMin = 10, DmgMax = 16, Sound = Sfx.Pistol, Anim = 0.25f },
-            new WeaponDef { Name = "SHOTGUN", Slot = 3, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
-            new WeaponDef { Name = "MINIGUN", Slot = 4, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
-            new WeaponDef { Name = "LAUNCHER", Slot = 5, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
-            new WeaponDef { Name = "RAY GUN", Slot = 6, Ammo = 3, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
+            new WeaponDef { Name = "FIST", Slot = 1, SlotPos = 0, Cooldown = 0.42f, DmgMin = 8, DmgMax = 22, Melee = true, Sound = Sfx.Punch, Anim = 0.42f },
+            new WeaponDef { Name = "SAW", Slot = 1, SlotPos = 1, Cooldown = 0.18f, DmgMin = 6, DmgMax = 13, Melee = true, Saw = true, Sound = Sfx.Saw, Anim = 0.16f },
+            new WeaponDef { Name = "PISTOL", Slot = 2, SlotPos = 0, Ammo = 0, Cooldown = 0.34f, Spread = 0.02f, DmgMin = 10, DmgMax = 16, Sound = Sfx.Pistol, Anim = 0.25f },
+            new WeaponDef { Name = "MACHINE GUN", Slot = 2, SlotPos = 1, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
+            new WeaponDef { Name = "SHOTGUN", Slot = 3, SlotPos = 0, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
+            new WeaponDef { Name = "DOUBLE SHOTGUN", Slot = 3, SlotPos = 1, Ammo = 1, Cooldown = 1.1f, Pellets = 8, Spread = 0.13f, DmgMin = 8, DmgMax = 15,
+                Barrels = 2, Knockback = 2.2f, Sound = Sfx.Shotgun, Anim = 0.95f },
+            new WeaponDef { Name = "LASER", Slot = 4, SlotPos = 0, Ammo = 4, Cooldown = 0.05f, DmgPerSec = 55, DrainPerSec = 18, Beam = true, Sound = Sfx.Laser, Anim = 0.1f },
+            new WeaponDef { Name = "LASER RAY", Slot = 4, SlotPos = 1, Ammo = 4, Cooldown = 2.6f, DmgMin = 60, DmgMax = 90, LineHit = true, Sound = Sfx.Laser, Anim = 0.4f },
+            new WeaponDef { Name = "LAUNCHER", Slot = 5, SlotPos = 0, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
+            new WeaponDef { Name = "GRENADE LAUNCHER", Slot = 5, SlotPos = 1, Ammo = 2, Cooldown = 0.65f, DmgMin = 45, DmgMax = 85, Grenade = true, Sound = Sfx.Rocket, Anim = 0.4f },
+            new WeaponDef { Name = "RAY GUN", Slot = 6, SlotPos = 0, Ammo = 3, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
         };
+
+        /// <summary>The two weapon indices that live in a slot (1..6); -1 where there is no second one (the ray gun).</summary>
+        public static readonly int[,] BySlot = BuildBySlot();
+
+        static int[,] BuildBySlot()
+        {
+            var t = new int[7, 2];
+            for (int s = 0; s < 7; s++) { t[s, 0] = -1; t[s, 1] = -1; }
+            for (int i = 0; i < All.Length; i++) t[All[i].Slot, All[i].SlotPos] = i;
+            return t;
+        }
     }
 
     struct PlayerInput
     {
         public float Forward, Strafe, Turn, Look;
         public bool Run, Fire, Use, Jump, Parry;
-        public int SelectSlot;     // 1..6, 0 none
-        public int Cycle;          // -1 / +1 from the mouse wheel
+        public int SelectSlot;        // 1..6, 0 none: pressing a slot key again toggles to the other weapon in it
+        public int SelectWeapon;      // 1 + a specific weapon index, 0 none: used by the "last weapon" quick-switch
+        public int Cycle;             // -1 / +1 from the mouse wheel
     }
 
     sealed class Player : Actor
     {
-        public const int Weapons = 6, AmmoTypes = 4;
+        public const int Weapons = 11, AmmoTypes = 5, Slots = 6;
 
         public float Angle, Pitch, VX, VY;
         public int HP = 100, Armor, ArmorType;
         public readonly int[] Ammo = new int[AmmoTypes];
-        public static readonly int[] MaxAmmo = { 200, 50, 50, 12 };
-        public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT", "SOUL" };
+        public static readonly int[] MaxAmmo = { 200, 50, 50, 12, 100 };
+        public static readonly string[] AmmoNames = { "BULL", "SHEL", "RCKT", "SOUL", "CELL" };
         public readonly bool[] Has = new bool[Weapons];
         public readonly bool[] Keys = new bool[5];      // 1 red, 2 blue, 3 yellow, 4 boarding pass
-        public int Weapon = 1, Pending = -1, LastWeapon = 0;
+        /// <summary>Which of the two weapons in each slot (1..6) a slot key last chose - remembered between levels.</summary>
+        public readonly int[] ActiveSlotPos = new int[Slots + 1];
+        public int Weapon = 2, Pending = -1, LastWeapon = 0;
         public bool Dead;
         public float DeadTime;
         public float Cooldown, FireAnim = 9, SwitchPos, Refire;
@@ -59,7 +87,8 @@ namespace TerminalHell
         public float EyeZ = 0.5f;
         public float AimSlope;    // height change per unit distance of a shot through the crosshair (set by the view)
         public float SwayX;       // weapon lag when turning with the mouse
-        bool fireWasDown, dryClicked;
+        bool fireWasDown, dryClicked, beamSoundOn;
+        float beamDrain;
         public float MuzzleTime;
         public float VZ;          // jumping: Z is how high the feet are off the floor
         public bool OnGround = true;
@@ -78,7 +107,7 @@ namespace TerminalHell
         {
             Kind = ActorKind.Player;
             Radius = 0.25f;
-            Has[0] = Has[1] = true;
+            Has[0] = Has[2] = true;
             Ammo[0] = 50;
         }
 
@@ -87,10 +116,11 @@ namespace TerminalHell
         public void ResetForNewGame()
         {
             HP = 100; Armor = 0; ArmorType = 0;
-            for (int i = 0; i < Weapons; i++) Has[i] = i < 2;
+            for (int i = 0; i < Weapons; i++) Has[i] = i == 0 || i == 2;
             for (int i = 0; i < AmmoTypes; i++) Ammo[i] = 0;
+            for (int i = 0; i < ActiveSlotPos.Length; i++) ActiveSlotPos[i] = 0;
             Ammo[0] = 50;
-            Weapon = 1; Pending = -1;
+            Weapon = 2; Pending = -1;
         }
 
         /// <summary>Bare fists and nothing else: how the airport starts.</summary>
@@ -98,6 +128,7 @@ namespace TerminalHell
         {
             for (int i = 0; i < Weapons; i++) Has[i] = i == 0;
             for (int i = 0; i < AmmoTypes; i++) Ammo[i] = 0;
+            for (int i = 0; i < ActiveSlotPos.Length; i++) ActiveSlotPos[i] = 0;
             Weapon = 0; Pending = -1;
         }
 
@@ -107,6 +138,7 @@ namespace TerminalHell
             p.HP = HP; p.Armor = Armor; p.ArmorType = ArmorType;
             Array.Copy(Ammo, p.Ammo, AmmoTypes);
             Array.Copy(Has, p.Has, Weapons);
+            Array.Copy(ActiveSlotPos, p.ActiveSlotPos, ActiveSlotPos.Length);
             p.Weapon = Weapon;
             return p;
         }
@@ -116,6 +148,7 @@ namespace TerminalHell
             HP = Math.Max(o.HP, 1); Armor = o.Armor; ArmorType = o.ArmorType;
             Array.Copy(o.Ammo, Ammo, AmmoTypes);
             Array.Copy(o.Has, Has, Weapons);
+            Array.Copy(o.ActiveSlotPos, ActiveSlotPos, ActiveSlotPos.Length);
             Weapon = o.Weapon;
         }
 
@@ -129,17 +162,41 @@ namespace TerminalHell
 
         int BestWeapon()
         {
-            int[] pref = { 5, 3, 2, 4, 1, 0 };
+            // the strongest weapon with ammo, but a rapid-fire one (machine gun, laser) only once nothing else is left
+            int[] pref = { 10, 9, 8, 7, 5, 4, 2, 1, 0 };
             foreach (int wi in pref)
-                if (Has[wi] && HasAmmoFor(wi) && wi != 4) return wi;
-            return Has[4] && HasAmmoFor(4) ? 4 : 0;
+                if (Has[wi] && HasAmmoFor(wi)) return wi;
+            if (Has[3] && HasAmmoFor(3)) return 3;
+            if (Has[6] && HasAmmoFor(6)) return 6;
+            return 0;
         }
 
         public void SelectWeapon(int wi)
         {
             if (wi < 0 || wi >= Weapons || !Has[wi] || wi == Weapon && Pending < 0) return;
             if (!HasAmmoFor(wi)) return;
+            ActiveSlotPos[WeaponDef.All[wi].Slot] = WeaponDef.All[wi].SlotPos;
             Pending = wi;
+        }
+
+        /// <summary>A slot key (1..6) was pressed: toggle to the slot's other weapon if already on this one,
+        /// otherwise switch to whichever of the slot's weapons was last active (falling back to the one carried).</summary>
+        public void SelectSlot(World w, int slot)
+        {
+            if (slot < 1 || slot > Slots) return;
+            int primary = WeaponDef.BySlot[slot, 0], secondary = WeaponDef.BySlot[slot, 1];
+            int cur = Pending >= 0 ? Pending : Weapon;
+            int target;
+            if (WeaponDef.All[cur].Slot == slot && secondary >= 0)
+                target = cur == primary ? secondary : primary;
+            else
+            {
+                target = ActiveSlotPos[slot] == 1 && secondary >= 0 ? secondary : primary;
+                if (target < 0 || !Has[target]) target = (target == primary ? secondary : primary);
+            }
+            if (target < 0 || !Has[target]) return;
+            if (!HasAmmoFor(target)) { w.Message("NO AMMO FOR THE " + WeaponDef.All[target].Name, Col.Rgb(255, 120, 60)); return; }
+            SelectWeapon(target);
         }
 
         public void Update(World w, float dt, PlayerInput inp)
@@ -237,12 +294,11 @@ namespace TerminalHell
             else HurtFloorTimer = 0;
 
             // ---- weapon switching
-            if (inp.SelectSlot > 0)
+            if (inp.SelectSlot > 0) SelectSlot(w, inp.SelectSlot);
+            if (inp.SelectWeapon > 0)
             {
-                int wi = inp.SelectSlot - 1;
-                if (!Has[wi]) { }
-                else if (!HasAmmoFor(wi)) w.Message("NO AMMO FOR THE " + WeaponDef.All[wi].Name, Col.Rgb(255, 120, 60));
-                else SelectWeapon(wi);
+                int wi = inp.SelectWeapon - 1;
+                if (Has[wi] && HasAmmoFor(wi)) SelectWeapon(wi);
             }
             if (inp.Cycle != 0)
             {
@@ -294,6 +350,25 @@ namespace TerminalHell
                     Charge = Math.Max(0, Charge - dt * 2.5f);
                 }
             }
+            else if (Def.Beam)
+            {
+                // the laser: no discrete shots, it just drains ammo and burns for as long as the trigger is held
+                bool ready = Pending < 0 && SwitchPos < 0.25f;
+                if (inp.Fire && ready && Ammo[Def.Ammo] > 0)
+                {
+                    if (!beamSoundOn) { Audio.Play(Def.Sound, 0.55f, 0, 1, 0); beamSoundOn = true; }
+                    beamDrain += Def.DrainPerSec * dt;
+                    while (beamDrain >= 1f && Ammo[Def.Ammo] > 0) { Ammo[Def.Ammo]--; beamDrain -= 1f; }
+                    FireAnim = 0;
+                    MuzzleTime = 0.08f;
+                    w.PlayerBeam(this, Def, dt);
+                }
+                else
+                {
+                    beamSoundOn = false;
+                    if (inp.Fire && ready && !dryClicked) { Audio.Play(Sfx.DryFire, 0.7f, 0, 1, 0); dryClicked = true; }
+                }
+            }
             else if (inp.Fire && Cooldown <= 0 && Pending < 0 && SwitchPos < 0.25f)
             {
                 var d = Def;
@@ -306,14 +381,16 @@ namespace TerminalHell
                 }
                 else
                 {
-                    if (d.Ammo >= 0) Ammo[d.Ammo]--;
+                    int shots = 1;
+                    if (d.Ammo >= 0) { shots = Math.Max(1, Math.Min(d.Barrels, Ammo[d.Ammo])); Ammo[d.Ammo] -= shots; }
                     Cooldown = d.Cooldown;
                     FireAnim = 0;
-                    w.PlayerFire(this, d, Refire);
+                    w.PlayerFire(this, d, Refire, shots);
                     Refire += 1;
-                    if (!d.Melee) MuzzleTime = d.Rocket ? 0.09f : 0.06f;
+                    if (!d.Melee) MuzzleTime = d.Rocket || d.Grenade ? 0.09f : 0.06f;
                 }
             }
+            else beamSoundOn = false;
             fireWasDown = inp.Fire;
 
             if (inp.Use) w.PlayerUse(this);
@@ -374,11 +451,18 @@ namespace TerminalHell
                 case 'E': if (!AddAmmo(1, (int)(20 * am))) return false; w.Message("PICKED UP A BOX OF SHELLS.", -1); break;
                 case 'q': if (!AddAmmo(2, (int)(1 * am + 0.5f))) return false; w.Message("PICKED UP A ROCKET.", -1); break;
                 case 'Q': if (!AddAmmo(2, (int)(5 * am))) return false; w.Message("PICKED UP A BOX OF ROCKETS.", -1); break;
-                case 'g': GiveWeapon(w, 1, 0, 20, "YOU GOT THE PISTOL!"); break;
-                case 'S': GiveWeapon(w, 2, 1, 8, "YOU GOT THE SHOTGUN!"); break;
-                case 'N': GiveWeapon(w, 3, 0, 20, "YOU GOT THE MINIGUN!"); break;
-                case 'L': GiveWeapon(w, 4, 2, 2, "YOU GOT THE ROCKET LAUNCHER!"); break;
-                case 'W': GiveWeapon(w, 5, 3, 2, "YOU GOT THE RAY GUN! IT IS WARM."); break;
+                case '"': if (!AddAmmo(4, (int)(20 * am))) return false; w.Message("PICKED UP AN ENERGY CELL.", -1); break;
+                case '\\': if (!AddAmmo(4, (int)(60 * am))) return false; w.Message("PICKED UP A BOX OF ENERGY CELLS.", -1); break;
+                case 'g': GiveWeapon(w, 2, 0, 20, "YOU GOT THE PISTOL!"); break;
+                case 'S': GiveWeapon(w, 4, 1, 8, "YOU GOT THE SHOTGUN!"); break;
+                case 'N': GiveWeapon(w, 3, 0, 20, "YOU GOT THE MACHINE GUN!"); break;
+                case 'L': GiveWeapon(w, 8, 2, 2, "YOU GOT THE ROCKET LAUNCHER!"); break;
+                case 'W': GiveWeapon(w, 10, 3, 2, "YOU GOT THE RAY GUN! IT IS WARM."); break;
+                case '5': GiveWeapon(w, 1, -1, 0, "YOU FOUND A SAW."); break;
+                case '6': GiveWeapon(w, 5, 1, 8, "YOU FOUND THE DOUBLE BARREL SHOTGUN!"); break;
+                case '7': GiveWeapon(w, 6, 4, 40, "YOU FOUND THE LASER!"); break;
+                case '8': GiveWeapon(w, 7, 4, 20, "YOU FOUND THE LASER RAY!"); break;
+                case '9': GiveWeapon(w, 9, 2, 3, "YOU FOUND THE GRENADE LAUNCHER!"); break;
                 case 'w': if (!AddAmmo(3, 1)) return false; w.Message("PICKED UP A SOUL CELL.", Col.Rgb(255, 150, 230)); break;
                 case 'r': Keys[1] = true; w.Message("PICKED UP A RED KEYCARD.", Col.Rgb(255, 80, 60)); Audio.Play(Sfx.KeyPickup); break;
                 case 'b': Keys[2] = true; w.Message("PICKED UP A BLUE KEYCARD.", Col.Rgb(90, 150, 255)); Audio.Play(Sfx.KeyPickup); break;
@@ -391,7 +475,7 @@ namespace TerminalHell
                     break;
                 default: return false;
             }
-            if ("orbySNLWg{".IndexOf(c) < 0) Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
+            if ("orbySNLWg{56789".IndexOf(c) < 0) Audio.Play(Sfx.Pickup, 0.8f, 0, 1, 0);
             PickupFlash = Math.Min(1, PickupFlash + 0.5f);
             return true;
         }
@@ -404,9 +488,10 @@ namespace TerminalHell
             // switch away from the fist when ammo shows up (like the classics)
             if (wasEmpty && Weapon == 0 && Pending < 0)
             {
-                if (type == 0 && Has[1]) SelectWeapon(Has[3] ? 3 : 1);
-                if (type == 1 && Has[2]) SelectWeapon(2);
-                if (type == 3 && Has[5]) SelectWeapon(5);
+                if (type == 0 && Has[2]) SelectWeapon(Has[3] ? 3 : 2);
+                if (type == 1 && Has[4]) SelectWeapon(Has[5] ? 5 : 4);
+                if (type == 3 && Has[10]) SelectWeapon(10);
+                if (type == 4 && (Has[6] || Has[7])) SelectWeapon(Has[6] ? 6 : 7);
             }
             return true;
         }
@@ -416,7 +501,7 @@ namespace TerminalHell
             bool had = Has[wi];
             Has[wi] = true;
             // soul cells are rationed: the difficulty's ammo bonus doesn't apply to them
-            Ammo[ammoType] = Math.Min(MaxAmmo[ammoType], Ammo[ammoType] + (ammoType == 3 ? ammo : (int)(ammo * w.AmmoMul)));
+            if (ammoType >= 0) Ammo[ammoType] = Math.Min(MaxAmmo[ammoType], Ammo[ammoType] + (ammoType == 3 ? ammo : (int)(ammo * w.AmmoMul)));
             w.Message(msg, Col.Rgb(255, 230, 120));
             Audio.Play(Sfx.WeaponPickup);
             GrinTime = 2.5f;

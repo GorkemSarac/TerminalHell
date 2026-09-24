@@ -229,6 +229,49 @@ namespace TerminalHell
             }
             bank[(int)Sfx.RayGun] = b;
 
+            // the saw: a ragged, buzzing motor - loops under the weapon while it is revving
+            b = Buf(0.5f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    double freq = 140 + 12 * Math.Sin(t * 2 * Math.PI * 23);
+                    ph += freq / R;
+                    float saw = (float)((ph - Math.Floor(ph)) * 2 - 1);
+                    float body = f.Process(saw * 0.7f + Rnd() * 0.5f, 1800, 0.4f, 0);
+                    b[i] = Dist(body * 2.2f, 1.6f) * Env(t, 0.02f, 0.6f);
+                }
+                Normalize(b, 0.55f);
+            }
+            bank[(int)Sfx.Saw] = b;
+
+            // the laser weapons: a clean tone with a hard edge, snapping off at the end
+            b = Buf(0.4f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    double freq = 1400 - 500 * Math.Min(1, t / 0.3f);
+                    ph += freq / R;
+                    float sq = (float)((ph - Math.Floor(ph)) < 0.5 ? 1 : -1);
+                    float body = f.Process(sq, 3200, 0.5f, 0);
+                    b[i] = Dist(body * 1.6f, 1.4f) * Env(t, 0.003f, 0.28f);
+                }
+                Normalize(b, 0.7f);
+            }
+            bank[(int)Sfx.Laser] = b;
+
+            // a grenade's metal-on-concrete clink as it bounces
+            b = Buf(0.1f);
+            NoiseBurst(b, 0, 0.5f, 4500, 2600, 0.001f, 0.012f, 0.04f);
+            Thump(b, 0, 0.35f, 900, 300, 0.015f, 0.04f);
+            Normalize(b, 0.4f);
+            bank[(int)Sfx.GrenadeBounce] = b;
+
             // the airport's public address chime: two soft bell notes, the second one lower, and a long ring-out
             b = Buf(2.4f);
             {

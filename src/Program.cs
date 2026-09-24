@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.7.0";
+        public const string Version = "1.11.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -301,7 +301,7 @@ namespace TerminalHell
                     {
                         // --dev-music [seconds] : the level of every track, rendered offline
                         float secs = a.Count > 1 ? float.Parse(a[1], inv) : 24f;
-                        for (int t = 0; t < 7; t++) Console.WriteLine(Music.Measure(t, secs, null));
+                        for (int t = 0; t < 8; t++) Console.WriteLine(Music.Measure(t, secs, null));
                         return 0;
                     }
                 case "--dev-aim":
@@ -318,8 +318,8 @@ namespace TerminalHell
                             g.Health = 1000;
                             w.Actors.Add(g);
                             w.P.AimSlope = slope;
-                            var d = WeaponDef.All[1];
-                            for (int i = 0; i < 20; i++) { w.PlayerFire(w.P, d, 0); }
+                            var d = WeaponDef.All[2];
+                            for (int i = 0; i < 20; i++) { w.PlayerFire(w.P, d, 0, 1); }
                             Console.WriteLine(string.Format(inv, "aim slope {0,5:0.00}: ghoul took {1,4:0} damage ({2})", slope, 1000 - g.Health,
                                 1000 - g.Health > 0 ? "hit" : "missed"));
                         }
@@ -503,7 +503,7 @@ namespace TerminalHell
                             var w = new World(Levels.ById("E2M1"), new Settings(), null);
                             w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
                             w.P.X = 8.5f; w.P.Y = 13.5f; w.P.Angle = (float)(-Math.PI / 2);
-                            w.P.Has[5] = true; w.P.Weapon = 5; w.P.Ammo[3] = 2;
+                            w.P.Has[10] = true; w.P.Weapon = 10; w.P.Ammo[3] = 2;
                             var target = new Monster(MonsterDef.Brute, 8.5f, 10.5f);
                             target.Health = 400;
                             w.Actors.Add(target);
@@ -597,6 +597,137 @@ namespace TerminalHell
                         Console.WriteLine(bad == 0 ? "parry, jump, shooting, the ray gun and the Warden behave" : bad + " problem(s)");
                         return bad;
                     }
+                case "--dev-runway":
+                    {
+                        // the runway is a straight line: the shotgun checkpoint and the exit room are both locked,
+                        // the rubble by the start genuinely blocks the room's own approach, and the traveller is scared
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M2"), new Settings(), null);
+                        Door yellow = null, red = null;
+                        foreach (var d in w.Map.Doors) { if (d.Key == 3) yellow = d; if (d.Key == 1) red = d; }
+                        if (yellow == null || red == null) { Console.WriteLine("missing the checkpoint or exit door"); return 1; }
+                        w.OpenDoor(yellow, true);
+                        Console.WriteLine("checkpoint: " + (yellow.State == DoorState.Closed ? "stays shut without the yellow key" : "OPENED WITHOUT A KEY"));
+                        if (yellow.State != DoorState.Closed) bad++;
+                        w.OpenDoor(red, true);
+                        Console.WriteLine("exit room : " + (red.State == DoorState.Closed ? "stays shut without the red key" : "OPENED WITHOUT A KEY"));
+                        if (red.State != DoorState.Closed) bad++;
+
+                        Decor npc = null;
+                        foreach (var act in w.Actors) { var dc = act as Decor; if (dc != null && dc.Lines != null) npc = dc; }
+                        bool scared = npc != null && Array.IndexOf(npc.Lines, "DON'T GO BACK IN THERE.") >= 0;
+                        Console.WriteLine("traveller : " + (npc == null ? "none found" : scared ? "scared" : "calm, not scared"));
+                        if (!scared) { Console.WriteLine("  WRONG: after the incident, they should be scared, not making small talk"); bad++; }
+
+                        // the rubble at the start room's own threshold blocks it from that side
+                        w.P.X = 9.5f; w.P.Y = 9.5f; w.P.Angle = (float)(Math.PI / 2);
+                        var fwd = new PlayerInput(); fwd.Forward = 1;
+                        for (int f = 0; f < 60; f++) w.Update(1 / 30f, fwd);
+                        Console.WriteLine("rubble    : blocked at y=" + w.P.Y.ToString("0.0", inv) + " (wanted to reach the keycard at y=13)");
+                        if (w.P.Y > 11.5f) { Console.WriteLine("  WRONG: the rubble should stop the player reaching the keycard from the room side"); bad++; }
+
+                        Console.WriteLine(bad == 0 ? "the runway behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-tower":
+                    {
+                        // the checkpoint needs both keys (each in its own room), the exit is a normal door with the
+                        // portal glimpsed on the wall past it, the bat hovers, and the boss cycles its three attacks
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M3"), new Settings(), null);
+                        Door red = null, blue = null, exitDoor = null;
+                        foreach (var d in w.Map.Doors) { if (d.Key == 1) red = d; if (d.Key == 2) blue = d; if (d.IsExit) exitDoor = d; }
+                        if (red == null || blue == null || exitDoor == null) { Console.WriteLine("missing the checkpoint doors or the exit"); return 1; }
+                        w.OpenDoor(red, true);
+                        Console.WriteLine("checkpoint: red door " + (red.State == DoorState.Closed ? "stays shut without the key" : "OPENED WITHOUT A KEY"));
+                        if (red.State != DoorState.Closed) bad++;
+                        w.OpenDoor(blue, true);
+                        Console.WriteLine("checkpoint: blue door " + (blue.State == DoorState.Closed ? "stays shut without the key" : "OPENED WITHOUT A KEY"));
+                        if (blue.State != DoorState.Closed) bad++;
+
+                        // the two keycards live in separate rooms, not the same one
+                        int rx = -1, ry = -1, bx = -1, by = -1;
+                        foreach (var sp in w.Map.Spawns) { if (sp.C == 'r') { rx = sp.X; ry = sp.Y; } if (sp.C == 'b') { bx = sp.X; by = sp.Y; } }
+                        float keyDist = (float)Math.Sqrt((rx - bx) * (rx - bx) + (ry - by) * (ry - by));
+                        Console.WriteLine("keys    : red at " + rx + "," + ry + ", blue at " + bx + "," + by + " (" + keyDist.ToString("0.0", inv) + " apart)");
+                        if (rx < 0 || bx < 0 || keyDist < 8) { Console.WriteLine("  WRONG: the two keycards should be well apart, in separate rooms"); bad++; }
+
+                        Console.WriteLine("exit    : texture " + exitDoor.Texture + (exitDoor.Texture == Tex.DOOR_EXIT ? " (normal exit)" : " (WRONG)"));
+                        if (exitDoor.Texture != Tex.DOOR_EXIT) bad++;
+                        int portalTex = -1;
+                        for (int dx = -1; dx <= 1 && portalTex < 0; dx++)
+                            for (int dy = -1; dy <= 1 && portalTex < 0; dy++)
+                            {
+                                int wx = exitDoor.X + dx, wy = exitDoor.Y + dy;
+                                if (!w.Map.In(wx, wy) || w.Map.Kind[wy * w.Map.W + wx] != CellKind.Wall) continue;
+                                if (w.Map.WallTex[wy * w.Map.W + wx] == Tex.HELL_PORTAL) portalTex = Tex.HELL_PORTAL;
+                            }
+                        Console.WriteLine("portal  : " + (portalTex == Tex.HELL_PORTAL ? "glimpsed on a wall past the exit" : "NOT FOUND near the exit"));
+                        if (portalTex != Tex.HELL_PORTAL) bad++;
+
+                        // the bat demon hovers instead of walking the floor
+                        var w2 = new World(Levels.ById("E1M3"), new Settings(), null);
+                        w2.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                        var bat = new Monster(MonsterDef.Bat, 10.5f, 10.5f);
+                        w2.Actors.Add(bat);
+                        var idle = new PlayerInput();
+                        for (int f = 0; f < 30; f++) w2.Update(1 / 30f, idle);
+                        Console.WriteLine("bat     : hovers at z=" + bat.Z.ToString("0.00", inv));
+                        if (bat.Z < 0.3f) { Console.WriteLine("  WRONG: the bat demon should hover well above the floor"); bad++; }
+
+                        // the Elder Fire Demon: a volley, a scream that summons bats, and a self-centred nova that spares itself
+                        var w3 = new World(Levels.ById("E1M3"), new Settings(), null);
+                        w3.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                        w3.P.X = 110.5f; w3.P.Y = 14.5f;
+                        var boss = new Monster(MonsterDef.FireDemon, 110.5f, 10.5f);
+                        boss.Alert(w3);
+                        w3.Actors.Add(boss);
+                        float bossHpBefore = boss.Health;
+                        int batsBefore = 0;
+                        foreach (var act in w3.Actors) { var bm = act as Monster; if (bm != null && bm.Def == MonsterDef.Bat) batsBefore++; }
+                        var order = new List<int>();
+                        int last = -1;
+                        for (int f = 0; f < 1200 && order.Count < 3; f++)
+                        {
+                            if (w3.P.Dead) { w3.P.Dead = false; w3.P.HP = 100; }   // the boss should keep fighting, not idle at a corpse
+                            w3.Update(1 / 30f, idle);
+                            if (boss.State == MState.Fire && boss.BossPattern != last) { order.Add(boss.BossPattern); last = boss.BossPattern; }
+                        }
+                        string seq = "";
+                        for (int i = 0; i < order.Count; i++) seq += (i > 0 ? "," : "") + order[i];
+                        Console.WriteLine("boss    : pattern order " + seq);
+                        if (order.Count < 3 || order[0] != 0 || order[1] != 1 || order[2] != 2) { Console.WriteLine("  WRONG: it should cycle volley, scream, nova in that order"); bad++; }
+                        int batsAfter = 0;
+                        foreach (var act in w3.Actors) { var bm = act as Monster; if (bm != null && bm.Def == MonsterDef.Bat) batsAfter++; }
+                        Console.WriteLine("boss    : bats before " + batsBefore + ", after the scream " + batsAfter);
+                        if (batsAfter <= batsBefore) { Console.WriteLine("  WRONG: the scream should summon more bat demons"); bad++; }
+                        Console.WriteLine("boss    : health before the nova " + bossHpBefore.ToString("0", inv) + ", after " + boss.Health.ToString("0", inv));
+                        if (boss.Health < bossHpBefore - 1) { Console.WriteLine("  WRONG: the nova should not damage the boss itself"); bad++; }
+
+                        Console.WriteLine(bad == 0 ? "the tower behaves" : bad + " problem(s)");
+                        return bad;
+                    }
+                case "--dev-imp":
+                    {
+                        // the lesser demon: fast, melee only, weak, and undeterred by the odd hit while closing in
+                        int bad = 0;
+                        var w = new World(Levels.ById("E1M2"), new Settings(), null);
+                        w.Actors.RemoveAll(x => x.Kind == ActorKind.Monster);
+                        w.P.X = 8.5f; w.P.Y = 8.5f;
+                        var imp = new Monster(MonsterDef.Imp, 8.5f, 3.5f);
+                        imp.Alert(w);
+                        w.Actors.Add(imp);
+                        int hpBefore = w.P.HP;
+                        var idle = new PlayerInput();
+                        for (int f = 0; f < 200 && w.P.HP == hpBefore; f++) w.Update(1 / 30f, idle);
+                        Console.WriteLine("melee   : the player took " + (hpBefore - w.P.HP) + " damage, closed to " + imp.DistTo(w.P.X, w.P.Y).ToString("0.00", inv));
+                        if (w.P.HP == hpBefore) { Console.WriteLine("  WRONG: it should catch up and claw the player"); bad++; }
+                        Console.WriteLine("stats   : health " + MonsterDef.Imp.Health + " (weak) speed " + MonsterDef.Imp.Speed + " (faster than a brute's " + MonsterDef.Brute.Speed + ")");
+                        if (MonsterDef.Imp.Speed <= MonsterDef.Brute.Speed) { Console.WriteLine("  WRONG: it should run faster than the brute"); bad++; }
+                        if (MonsterDef.Imp.Health >= MonsterDef.Ghoul.Health) { Console.WriteLine("  WRONG: it should be weaker than a ghoul"); bad++; }
+                        Console.WriteLine(bad == 0 ? "the lesser demon behaves" : bad + " problem(s)");
+                        return bad;
+                    }
                 case "--dev-automap-aim":
                     {
                         // AimSlope has to stay correct for shots even while the full 3D pass is skipped for the automap
@@ -612,7 +743,7 @@ namespace TerminalHell
                         for (int f = 0; f < 5; f++) w.Update(1 / 30f, still);
                         g.DebugAutomapAim(w, 160, 46);
                         Console.WriteLine("aim slope with automap on: " + w.P.AimSlope.ToString("0.000", inv));
-                        for (int i = 0; i < 20; i++) w.PlayerFire(w.P, WeaponDef.All[1], 0);
+                        for (int i = 0; i < 20; i++) w.PlayerFire(w.P, WeaponDef.All[2], 0, 1);
                         Console.WriteLine("shots landed: " + (1000 - target.Health > 0));
                         if (1000 - target.Health <= 0) { Console.WriteLine("  WRONG: aiming should still work with the map open"); bad++; }
                         Console.WriteLine(bad == 0 ? "automap aim behaves" : bad + " problem(s)");
@@ -677,7 +808,13 @@ namespace TerminalHell
                         foreach (var d in w.Map.Doors) if (d.Key == 2) blue = d;
                         Console.WriteLine("door    : blue door at " + (blue == null ? "none" : blue.X + "," + blue.Y));
                         if (blue == null) { Console.WriteLine("  WRONG: the blue key should open something"); bad++; }
-                        w.P.X = pw.X - 0.5f; w.P.Y = pw.Y + 0.5f; w.P.Angle = 0;
+                        // walk there under real movement (not a teleport) so anything standing in the way - like
+                        // the desk itself - would actually block it, the way it did for the player
+                        w.P.X = pw.X - 4f; w.P.Y = pw.Y + 0.5f; w.P.Angle = 0;
+                        var walk = new PlayerInput(); walk.Forward = 1;
+                        for (int f = 0; f < 90 && w.P.X < pw.X - 0.7f; f++) w.Update(1 / 30f, walk);
+                        Console.WriteLine("walked  : reached " + w.P.X.ToString("0.0", inv) + "," + w.P.Y.ToString("0.0", inv) + " (wall at " + pw.X + "," + pw.Y + ")");
+                        if (w.P.X < pw.X - 1.3f) { Console.WriteLine("  WRONG: something is blocking the approach to the secret wall"); bad++; }
                         var use = new PlayerInput(); use.Use = true;
                         w.Update(1 / 30f, use);
                         for (int f = 0; f < 60; f++) w.Update(1 / 30f, new PlayerInput());
@@ -764,8 +901,8 @@ namespace TerminalHell
 
                         // the pistol on its pedestal
                         w.P.Give(w, 'g', false);
-                        Console.WriteLine("pistol  : has " + w.P.Has[1] + ", bullets " + w.P.Ammo[0]);
-                        if (!w.P.Has[1] || w.P.Ammo[0] < 10) { Console.WriteLine("  WRONG: the pistol should come with bullets"); bad++; }
+                        Console.WriteLine("pistol  : has " + w.P.Has[2] + ", bullets " + w.P.Ammo[0]);
+                        if (!w.P.Has[2] || w.P.Ammo[0] < 10) { Console.WriteLine("  WRONG: the pistol should come with bullets"); bad++; }
 
                         // the ceiling sign really slides
                         var f0 = (int[])Art.MarqueeFrame(0).Px.Clone();
@@ -809,7 +946,7 @@ namespace TerminalHell
                         var s = new Settings();
                         var levels = Levels.All();
                         var w = new World(levels[Levels.IndexOf("E2M2")], s, null);
-                        w.P.Has[2] = w.P.Has[5] = true;
+                        w.P.Has[4] = w.P.Has[10] = true;
                         w.P.Ammo[1] = 20; w.P.Ammo[3] = 15;
                         var rng = new Random(11);
                         var inp = new PlayerInput();
@@ -820,7 +957,7 @@ namespace TerminalHell
                                 inp = new PlayerInput();
                                 inp.Forward = rng.Next(3) - 1; inp.Strafe = rng.Next(3) - 1;
                                 inp.Fire = rng.Next(3) == 0; inp.Run = rng.Next(2) == 0;
-                                inp.SelectSlot = rng.Next(10) == 0 ? rng.Next(1, Player.Weapons + 1) : 0;
+                                inp.SelectSlot = rng.Next(10) == 0 ? rng.Next(1, Player.Slots + 1) : 0;
                             }
                             inp.Turn = (float)(rng.NextDouble() - 0.5) * 0.2f;
                             inp.Use = rng.Next(6) == 0;
@@ -905,6 +1042,8 @@ namespace TerminalHell
                                 if ("^>v<".IndexOf(sp.C) >= 0) start = i;
                                 else things.Add(sp);
                             }
+                            // the tower's boss isn't a map character (see World.SpawnTowerBoss) - stand it in here too
+                            if (def.Id == "E1M3") keyAt[10 * m.W + 110] = 3;
                             var keys = new bool[5];
                             bool[] reach = null;
                             for (int pass = 0; pass < 6; pass++)
@@ -955,8 +1094,8 @@ namespace TerminalHell
                             var s = new Settings();
                             var w = new World(def, s, null);
                             w.DamageMul = 0;
-                            w.P.Has[2] = w.P.Has[3] = w.P.Has[4] = w.P.Has[5] = true;
-                            w.P.Ammo[0] = 200; w.P.Ammo[1] = 50; w.P.Ammo[2] = 50; w.P.Ammo[3] = 60;
+                            for (int wi = 1; wi < Player.Weapons; wi++) w.P.Has[wi] = true;
+                            w.P.Ammo[0] = 200; w.P.Ammo[1] = 50; w.P.Ammo[2] = 50; w.P.Ammo[3] = 60; w.P.Ammo[4] = 100;
                             var open = new List<int>();
                             for (int i = 0; i < w.Map.W * w.Map.H; i++) if (w.Map.Kind[i] == CellKind.Empty) open.Add(i);
                             var inp = new PlayerInput();
@@ -968,7 +1107,7 @@ namespace TerminalHell
                                     inp = new PlayerInput();
                                     inp.Forward = rng.Next(3) - 1; inp.Strafe = rng.Next(3) - 1;
                                     inp.Fire = rng.Next(3) == 0; inp.Run = rng.Next(2) == 0;
-                                    inp.SelectSlot = rng.Next(8) == 0 ? rng.Next(1, Player.Weapons + 1) : 0;
+                                    inp.SelectSlot = rng.Next(8) == 0 ? rng.Next(1, Player.Slots + 1) : 0;
                                 }
                                 inp.Turn = (float)(rng.NextDouble() - 0.5) * 0.1f;
                                 inp.Use = rng.Next(10) == 0;

@@ -96,7 +96,7 @@ namespace TerminalHell
                 }
             }
 
-            tracks = new Track[7];
+            tracks = new Track[9];
             // 0: title - slow and ominous
             tracks[0] = new Track
             {
@@ -156,6 +156,26 @@ namespace TerminalHell
                 Drums = new[] { "K...........S...", "K.......K...S...", "K.....K.K...S.S.", "K...........S..C" },
                 Lead = new[] { "................", "....c...........", "................", "..........d.e..." },
                 Order = new[] { 0, 0, 1, 0, 0, 0, 2, 0, 1, 0, 0, 0, 3, 0, 3, -1 },
+            };
+            // 7: the runway - out in the open, exposed, a marching drive with a distant radar ping
+            tracks[7] = new Track
+            {
+                Bpm = 128, Root = 38, Drive = 6, PadVol = 0.1f, BassVol = 0.21f, LeadVol = 0.07f, Fifth = false,
+                Chord = new[] { 0, 3, 7 },
+                Bass = new[] { "0.0.3.0.0.0.5.0.", "0.0.3.0.0.0.6.5.", "0.0.0.3.0.5.3.0.", "8-8-6-6-5-5-3.0." },
+                Drums = new[] { "K.H.K.HHK.H.S.H.", "K.H.K.HHK.H.SHH.", "K.HHK.H.K.HHS.H.", "K.K.K.K.S.S.S.SC" },
+                Lead = new[] { "................", "..........7.....", "................", "7...........c..." },
+                Order = new[] { 0, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 2, 3, 0, 3, 0 },
+            };
+            // 8: the tower - climbing under fire, a klaxon wailing two notes apart, faster and tighter than the runway
+            tracks[8] = new Track
+            {
+                Bpm = 148, Root = 41, Drive = 7, PadVol = 0.09f, BassVol = 0.23f, LeadVol = 0.1f,
+                Chord = new[] { 0, 3, 7, 10 },
+                Bass = new[] { "0.3.0.3.5.3.0.--", "0.3.0.3.7.5.3.1.", "0.0.3.3.0.0.5.5.", "8-8-7-7-5-5-3.1." },
+                Drums = new[] { "X.H.Y.HHX.H.Y.H.", "X.HHY.H.X.X.Y.HH", "XHXHYHXHXHXHYHYH", "K.K.K.K.S.S.S.SC" },
+                Lead = new[] { "9.......c.......", "................", "9.......c.......", "d...9.......c..." },
+                Order = new[] { 0, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 2, 3, 0, 3, -2 },
             };
         }
 

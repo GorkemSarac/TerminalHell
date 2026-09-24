@@ -59,6 +59,8 @@ namespace TerminalHell
         public int MusicAfter = -1;         // music once the level's incident has happened (the airport)
         public bool Unarmed;                // the run starts with bare fists and nothing else
         public bool Chime;                  // calm airport announcements until the incident
+        public int ExitTexture = -1;        // -1: the usual hazard-striped exit door; otherwise a level-specific look
+        public int[][] WallOverrides;       // {x, y, texture} triples, restyling specific wall cells after the map loads
         public string Par = "";
     }
 
@@ -185,7 +187,8 @@ namespace TerminalHell
                         d.IsExit = c == 'X';
                         // the boarding gate seals shut behind you once you've walked through it
                         if (c == '}') { d.SealBehind = true; d.SealPositive = false; }
-                        d.Texture = d.Key == 1 ? Tex.DOOR_RED : d.Key == 2 ? Tex.DOOR_BLUE : d.Key == 3 ? Tex.DOOR_YELLOW : d.Key == 4 ? Tex.DOOR_PASS : d.IsExit ? Tex.DOOR_EXIT : Tex.DOOR;
+                        d.Texture = d.Key == 1 ? Tex.DOOR_RED : d.Key == 2 ? Tex.DOOR_BLUE : d.Key == 3 ? Tex.DOOR_YELLOW : d.Key == 4 ? Tex.DOOR_PASS
+                            : d.IsExit ? (def.ExitTexture >= 0 ? def.ExitTexture : Tex.DOOR_EXIT) : Tex.DOOR;
                         m.Kind[i] = CellKind.Door;
                         m.DoorIdx[i] = (short)m.Doors.Count;
                         m.WallHeight[i] = 1;
@@ -306,6 +309,15 @@ namespace TerminalHell
                     if (m.In(nx, ny) && IsOutdoorFloor(m.Floor[ny * m.W + nx])) { m.Floor[i] = FloorKind.BridgeOut; break; }
                 }
             }
+
+            // restyle specific wall cells (a level-authored illusion, a special exit, whatever else needs one cell changed)
+            if (def.WallOverrides != null)
+                foreach (var o in def.WallOverrides)
+                {
+                    if (!m.In(o[0], o[1])) continue;
+                    int oi = o[1] * m.W + o[0];
+                    if (m.Kind[oi] == CellKind.Wall) m.WallTex[oi] = (byte)o[2];
+                }
 
             m.Flow = new short[n];
             return m;

@@ -667,13 +667,13 @@ namespace TerminalHell
             inp.Use = Input.Hit('E');
             inp.Jump = Input.Hit(Input.VK_SPACE);
             inp.Parry = Input.RHit;
-            for (int i = 0; i < Player.Weapons; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
+            for (int i = 0; i < Player.Slots; i++) if (Input.Hit('1' + i)) inp.SelectSlot = i + 1;
             if (Input.Wheel != 0)
             {
                 if (automap) automapZoom = Math.Max(0.4f, Math.Min(3f, automapZoom + Input.Wheel * 0.15f));
                 else inp.Cycle = Input.Wheel > 0 ? -1 : 1;
             }
-            if (Input.Hit('Q') && world.P.Has[world.P.LastWeapon]) inp.SelectSlot = world.P.LastWeapon + 1;
+            if (Input.Hit('Q') && world.P.Has[world.P.LastWeapon]) inp.SelectWeapon = world.P.LastWeapon + 1;
 
             if (Warp != null && stateTime < 0.1f)
             {
@@ -898,7 +898,8 @@ namespace TerminalHell
                 int filled = (int)Math.Ceiling(bw * Math.Max(0, boss.Health) / boss.Def.Health);
                 int bx = (scr.Cols - bw) / 2;
                 int by = world.Messages.Count > 0 ? world.Messages.Count : 1;
-                scr.Print(bx - 11, by, "THE WARDEN", Col.Rgb(255, 120, 80), Screen.Transparent);
+                string bossName = "THE " + boss.Def.Name;
+                scr.Print(bx - bossName.Length - 1, by, bossName, Col.Rgb(255, 120, 80), Screen.Transparent);
                 for (int i = 0; i < bw; i++) scr.Put(bx + i, by, i < filled ? '█' : '░', i < filled ? Col.Rgb(220, 30, 20) : Col.Rgb(80, 30, 26), Col.Rgb(20, 4, 4));
             }
             Hud.DrawStatusBar(scr, world, viewRows, dt);
