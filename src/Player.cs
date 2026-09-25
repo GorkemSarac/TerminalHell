@@ -537,6 +537,7 @@ namespace TerminalHell
         {
             bool had = Has[wi];
             Has[wi] = true;
+            w.WeaponFound(wi);
             // soul cells are rationed: the difficulty's ammo bonus doesn't apply to them
             if (ammoType >= 0) Ammo[ammoType] = Math.Min(MaxAmmo[ammoType], Ammo[ammoType] + (ammoType == 3 ? ammo : (int)(ammo * w.AmmoMul)));
             w.Message(msg, Col.Rgb(255, 230, 120));

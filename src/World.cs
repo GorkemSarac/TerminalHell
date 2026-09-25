@@ -51,6 +51,7 @@ namespace TerminalHell
             foreach (var sp in Map.Spawns) SpawnThing(sp.C, sp.X, sp.Y);
             if (def.Id == "E1M3") SpawnTowerBoss();
             SpawnBonusWeapon();
+            SpawnTraps();
             MergePending();
             Map.BuildLightmap();
             TotalSecrets = Map.SecretCount;
@@ -87,11 +88,136 @@ namespace TerminalHell
         public static readonly BonusWeapon[] BonusWeapons =
         {
             new BonusWeapon("E1M2", '5', 31.5f, 26.5f, "the maintenance workshop through the old fuel depot door, south of the runway"),
-            new BonusWeapon("E1M3", '6', 94.5f, 3.5f, "the security armory off the last stretch of corridor before the boss"),
+            new BonusWeapon("E1M3", '6', 89.5f, 4.5f, "the security armory off the last stretch of corridor before the boss"),
             new BonusWeapon("E2M1", '7', 53.5f, 15.5f, "the research wing through the cut in the cliff, east side of the courtyard"),
             new BonusWeapon("E2M2", '8', 47.5f, 17.5f, "the prototype vault behind the blue-key room, on a platform in a slime moat"),
-            new BonusWeapon("E2M3", '9', 2.5f, 19.5f, "the far northwest corner of the west room, next to the blue keycard"),
+            new BonusWeapon("E2M3", '9', 6.5f, 32.5f, "the south end of the west room, on the shore of a lava moat"),
         };
+
+        // ------------------------------------------------------------ weapon traps
+
+        /// <summary>One monster waiting behind a trap wall: 'z' possessed, 'i' fire demon, 'p' gluttony demon, '\'' lesser demon, 'b' bat demon.</summary>
+        public struct TrapMob
+        {
+            public char Kind; public float X, Y;
+            public TrapMob(char kind, float x, float y) { Kind = kind; X = x; Y = y; }
+        }
+
+        /// <summary>
+        /// Picking a new weapon up slides a wall open on the thing it is best at killing: the machine gun on a wall of bat
+        /// demons, the double barrel on two fire demons right beside it, the beam rifle on a crowd of lesser demons, the saw on a
+        /// line of them filing out of a slot, the laser slicer on fire demons stranded in an arc across a slime moat, the
+        /// grenade launcher on a huddle behind a lava moat. The demons wait, asleep, in a closet cut into the wall.
+        /// </summary>
+        public sealed class WeaponTrap
+        {
+            public string Level;
+            public int Weapon;          // WeaponDef index of the weapon whose pickup springs it
+            public string Message;
+            public int[] Panels;        // x, y pairs: the wall cells that slide away
+            public TrapMob[] Mobs;
+            public float LightX, LightY, LightRadius, LightIntensity = 0.55f;
+            public bool Sprung;
+        }
+
+        static TrapMob[] Mobs(char kind, params float[] xy)
+        {
+            var list = new TrapMob[xy.Length / 2];
+            for (int i = 0; i < list.Length; i++) list[i] = new TrapMob(kind, xy[i * 2], xy[i * 2 + 1]);
+            return list;
+        }
+
+        static TrapMob[] Mobs(params TrapMob[][] groups)
+        {
+            var all = new List<TrapMob>();
+            foreach (var g in groups) all.AddRange(g);
+            return all.ToArray();
+        }
+
+        public static WeaponTrap[] MakeTraps()
+        {
+            return new[]
+            {
+                // the saw: six lesser demons queued in a one-cell slot behind the workshop's east wall, so they come out in a line
+                new WeaponTrap { Level = "E1M2", Weapon = 1, Message = "A PANEL SLIDES AWAY - THEY'RE COMING OUT ONE BY ONE!",
+                    Panels = new[] { 34, 26 }, LightX = 38, LightY = 26.5f, LightRadius = 6,
+                    Mobs = Mobs('\'', 36.5f, 26.5f, 38.5f, 26.5f, 40.5f, 26.5f) },
+                // the machine gun: bat demons packed behind the east wall of the gun room
+                new WeaponTrap { Level = "E1M3", Weapon = 3, Message = "THE WALL SLIDES OPEN - BATS!",
+                    Panels = new[] { 64, 14, 64, 15, 64, 16, 64, 17, 64, 18 }, LightX = 66.5f, LightY = 16.5f, LightRadius = 6,
+                    Mobs = Mobs('b', 66.5f, 15.5f, 66.5f, 17.5f, 67.5f, 16.5f) },
+                // the double barrel: two fire demons right beside the pedestal
+                new WeaponTrap { Level = "E1M3", Weapon = 5, Message = "A WALL SLIDES OPEN - TWO FIRE DEMONS, RIGHT BESIDE YOU!",
+                    Panels = new[] { 87, 3, 87, 4, 87, 5 }, LightX = 85, LightY = 4.5f, LightRadius = 5,
+                    Mobs = Mobs('i', 86.5f, 3.5f, 86.5f, 5.5f) },
+                // the beam rifle: a crowd of lesser demons behind the east wall of the research wing
+                new WeaponTrap { Level = "E2M1", Weapon = 6, Message = "THE WALL SLIDES OPEN - LESSER DEMONS!",
+                    Panels = new[] { 56, 13, 56, 14, 56, 15, 56, 16, 56, 17 }, LightX = 58.5f, LightY = 15.5f, LightRadius = 6,
+                    Mobs = Mobs('\'', 58.5f, 13.5f, 58.5f, 15.5f, 58.5f, 17.5f, 59.5f, 16.5f) },
+                // the laser slicer: fire demons on single stones in an arc across a slime moat, none of them able to walk to you
+                new WeaponTrap { Level = "E2M2", Weapon = 7, Message = "THE WALL SLIDES OPEN - FIRE DEMONS, ALL ACROSS THE SLIME!",
+                    Panels = new[] { 55, 12, 55, 13, 55, 14, 55, 15, 55, 16, 55, 17, 55, 18, 55, 19, 55, 20, 55, 21, 55, 22 },
+                    LightX = 60, LightY = 17.5f, LightRadius = 11, LightIntensity = 1.1f,
+                    Mobs = Mobs('i', 58.5f, 11.5f, 59.5f, 13.5f, 59.5f, 15.5f, 60.5f, 17.5f, 59.5f, 19.5f, 59.5f, 21.5f, 58.5f, 23.5f) },
+                // the grenade launcher: a huddle of demons behind a lava moat, close enough together for one blast
+                new WeaponTrap { Level = "E2M3", Weapon = 9, Message = "THE WALL SLIDES OPEN - THEY'RE ALL HUDDLED TOGETHER!",
+                    Panels = new[] { 5, 36, 6, 36, 7, 36, 8, 36 }, LightX = 6.5f, LightY = 37.5f, LightRadius = 5,
+                    Mobs = Mobs(Mobs('z', 5.5f, 37.5f, 7.5f, 37.5f, 6.5f, 38.5f), Mobs('i', 6.5f, 37.5f, 8.5f, 37.5f, 7.5f, 38.5f)) },
+            };
+        }
+
+        readonly List<WeaponTrap> traps = new List<WeaponTrap>();
+        readonly Dictionary<WeaponTrap, List<Door>> trapDoors = new Dictionary<WeaponTrap, List<Door>>();
+        readonly Dictionary<WeaponTrap, List<Monster>> trapMobs = new Dictionary<WeaponTrap, List<Monster>>();
+
+        /// <summary>Cuts the closets' panels into the walls and puts the sleepers behind them.</summary>
+        void SpawnTraps()
+        {
+            foreach (var t in MakeTraps())
+            {
+                if (t.Level != Def.Id) continue;
+                traps.Add(t);
+                var cells = new List<int[]>();
+                for (int i = 0; i + 1 < t.Panels.Length; i += 2) cells.Add(new[] { t.Panels[i], t.Panels[i + 1] });
+                int before = Map.Doors.Count;
+                Map.AddTrapDoors(cells);
+                trapDoors[t] = Map.Doors.GetRange(before, Map.Doors.Count - before);
+                var mobs = new List<Monster>();
+                foreach (var m in t.Mobs)
+                {
+                    MonsterDef def = m.Kind == 'b' ? MonsterDef.Bat : MonsterDef.For(m.Kind);
+                    var mon = new Monster(def, m.X, m.Y);
+                    mon.Ambush = true;
+                    mon.Angle = (float)Math.PI;
+                    Add(mon);
+                    mobs.Add(mon);
+                    TotalKills++;
+                }
+                trapMobs[t] = mobs;
+                Map.AddLight(t.LightX, t.LightY, t.LightRadius, t.LightIntensity, Col.Rgb(255, 120, 70));
+            }
+        }
+
+        /// <summary>A weapon has just been picked up: if a wall was waiting for it, the wall opens.</summary>
+        public void WeaponFound(int wi)
+        {
+            foreach (var t in traps)
+            {
+                if (t.Weapon != wi || t.Sprung) continue;
+                t.Sprung = true;
+                var doors = trapDoors[t];
+                foreach (var d in doors)
+                {
+                    d.State = DoorState.Opening;
+                    d.HasOpened = true;
+                }
+                if (doors.Count > 0) Audio.PlayAt(Sfx.PushWall, doors[0].X + 0.5f, doors[0].Y + 0.5f, 1.5f, 0);
+                Audio.Play(Sfx.Secret, 0.5f, 0, 0.7f, 0);
+                Shake(0.6f);
+                Message(t.Message, Col.Rgb(255, 150, 60));
+                foreach (var m in trapMobs[t]) { m.Ambush = false; m.Alert(this); }
+            }
+        }
 
         void SpawnBonusWeapon()
         {
@@ -469,6 +595,7 @@ namespace TerminalHell
 
         public void OpenDoor(Door d, bool byPlayer)
         {
+            if (d.Trap) return;   // a trap panel opens only when its weapon is picked up (WeaponFound)
             if (d.IsExit)
             {
                 if (d.State != DoorState.Closed || ExitTriggered) return;
@@ -524,6 +651,7 @@ namespace TerminalHell
                         if (d.Open >= 1) { d.Open = 1; d.State = DoorState.Open; d.Timer = 4.5f; }
                         break;
                     case DoorState.Open:
+                        if (d.Trap) break;   // and once open it stays open
                         d.Timer -= dt;
                         if (d.Timer <= 0)
                         {
@@ -699,6 +827,7 @@ namespace TerminalHell
             if (k == CellKind.Door)
             {
                 var d = Map.DoorAt(cx, cy);
+                if (d.Trap) return;
                 if (d.IsExit) { Hint = "[E] EXIT LEVEL"; HintColor = Col.Rgb(120, 255, 120); return; }
                 if (d.Sealed) { Hint = "SEALED SHUT"; HintColor = Col.Rgb(180, 90, 80); return; }
                 if (d.State == DoorState.Opening || d.State == DoorState.Open) return;
@@ -791,6 +920,7 @@ namespace TerminalHell
             if (d.Grenade)
             {
                 // lobbed along the look direction with a little lift, so it drops in a low arc and skips along the floor
+                Audio.Play(Sfx.Thump, 1f, 0, 1f, 0);   // the launcher's hollow thump, on top of the shot itself
                 var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, Projectile.GrenadeSpeed, Projectile.GRENADE);
                 pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
                 pr.SplashDamage = 100; pr.SplashRadius = 1.7f;

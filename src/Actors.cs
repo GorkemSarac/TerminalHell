@@ -108,7 +108,7 @@ namespace TerminalHell
             Bat = new MonsterDef
             {
                 // a small flier that keeps its distance and spits venom - the machine gun earns its keep here
-                Name = "BAT DEMON", Health = 25, Speed = 2.4f, Radius = 0.2f, PainChance = 0.4f, Attack = AttackType.Projectile,
+                Name = "BAT DEMON", Code = '§', Health = 25, Speed = 2.4f, Radius = 0.2f, PainChance = 0.4f, Attack = AttackType.Projectile,
                 ProjType = Projectile.SPIT, ProjSpeed = 9f, Range = 15, WindUp = 0.4f, CoolMin = 1.3f, CoolMax = 2.4f, DmgMin = 4, DmgMax = 10,
                 Sight = Sfx.FiendSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.FiendThrow, Drop = '\0',
                 Frames = Art.Bat, Scale = 1f / 90, Flies = true, HoverZ = 0.6f, Score = 120,
@@ -116,7 +116,7 @@ namespace TerminalHell
             FireDemon = new MonsterDef
             {
                 // a smaller Warden built around fireballs instead of rockets: a volley, a summoning scream, a nova
-                Name = "ELDER FIRE DEMON", Health = 1050, Speed = 1.4f, Radius = 0.5f, PainChance = 0.06f, Attack = AttackType.Projectile,
+                Name = "ELDER FIRE DEMON", Code = '¶', Health = 1050, Speed = 1.4f, Radius = 0.5f, PainChance = 0.06f, Attack = AttackType.Projectile,
                 ProjType = Projectile.FIREBALL, ProjSpeed = 7f, Range = 22, WindUp = 1.0f, CoolMin = 1.8f, CoolMax = 2.8f, DmgMin = 15, DmgMax = 32, Shots = 3,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.ElderFireDemon,
                 Scale = 1f / 46, Boss = true, FireBoss = true, Drop = 'y', DropChance = 1f, Score = 3500,
@@ -133,6 +133,8 @@ namespace TerminalHell
                 case 'p': return Brute;
                 case 'K': return Warden;
                 case '\'': return Imp;
+                case '§': return Bat;         // no map characters - these two only turn up in saved games
+                case '¶': return FireDemon;
             }
             return null;
         }

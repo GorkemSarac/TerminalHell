@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.16.0";
+        public const string Version = "1.17.1";
 
         [STAThread]
         static int Main(string[] args)
@@ -229,6 +229,7 @@ namespace TerminalHell
                         var s = new Settings();
                         var g = new Game(s);
                         if (a.Count > 12) g.DebugFireFor = float.Parse(a[12], inv);
+                        g.DebugSpringTraps = a.Count > 13 && a[13] == "trap";
                         g.DebugFrame(int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]) - 1, float.Parse(a[5], inv), float.Parse(a[6], inv), float.Parse(a[7], inv),
                             a.Count > 8 ? float.Parse(a[8], inv) : 0, a[1], a.Count > 9 && a[9] == "ascii", a.Count > 10 ? int.Parse(a[10]) : -1, a.Count > 11 ? float.Parse(a[11], inv) : 0);
                         return 0;
@@ -1490,6 +1491,87 @@ namespace TerminalHell
                 }
                 Console.WriteLine("lowest  : pistol full-ish, shotgun nearly dry: shells dropped " + shellDrops + "/" + trials);
                 if (shellDrops < trials / 2) { Console.WriteLine("  WRONG: kills should mostly drop shells for the shotgun"); bad++; }
+            }
+
+            // ---- the weapon traps: the wall opens on pickup and what is behind it is what the weapon is for
+            {
+                foreach (var t in World.MakeTraps())
+                {
+                    var w = new World(Levels.ById(t.Level), new Settings(), null);
+                    w.DamageMul = 0;
+                    var doors = new List<Door>();
+                    for (int i = 0; i + 1 < t.Panels.Length; i += 2)
+                    {
+                        var d = w.Map.DoorAt(t.Panels[i], t.Panels[i + 1]);
+                        if (d == null || !d.Trap) { Console.WriteLine("  WRONG: " + t.Level + " panel " + t.Panels[i] + "," + t.Panels[i + 1] + " is not a trap panel"); bad++; }
+                        else doors.Add(d);
+                    }
+                    foreach (var m in t.Mobs)
+                        if (w.Map.KindAt((int)m.X, (int)m.Y) != CellKind.Empty) { Console.WriteLine("  WRONG: " + t.Level + " a sleeper at " + m.X + "," + m.Y + " is inside a wall"); bad++; }
+                    Hold(w, idle, 1f);
+                    var sleepers = new List<Monster>();
+                    foreach (var m in t.Mobs)
+                        foreach (var act in w.Actors) { var mm = act as Monster; if (mm != null && Math.Abs(mm.X - m.X) < 0.01f && Math.Abs(mm.Y - m.Y) < 0.01f) sleepers.Add(mm); }
+                    int asleep = 0, stillClosed = 0;
+                    foreach (var mm in sleepers) if (mm.State == MState.Idle && mm.Ambush) asleep++;
+                    foreach (var d in doors) if (d.State == DoorState.Closed) stillClosed++;
+                    w.WeaponFound(t.Weapon);
+                    Hold(w, idle, 1.5f);
+                    int awake = 0, open = 0;
+                    foreach (var mm in sleepers) if (mm.Ambush || mm.State == MState.Idle) awake++;
+                    foreach (var d in doors) if (d.Open >= 1f) open++;
+                    Console.WriteLine("trap    : " + t.Level + " weapon " + t.Weapon + ": " + t.Mobs.Length + " sleepers (" + asleep + " asleep before), " +
+                        doors.Count + " panels (" + stillClosed + " closed before, " + open + " open after)");
+                    if (asleep < t.Mobs.Length || stillClosed != doors.Count) { Console.WriteLine("  WRONG: everything should stay shut and asleep until the weapon is taken"); bad++; }
+                    if (awake > 0 || open != doors.Count) { Console.WriteLine("  WRONG: taking the weapon should open every panel and wake every sleeper"); bad++; }
+                }
+
+                // the slicer's fire demons: one shot from the pedestal kills every one of them, and none can leave its stone
+                {
+                    var w = new World(Levels.ById("E2M2"), new Settings(), null);
+                    w.DamageMul = 0;
+                    w.P.X = 47.5f; w.P.Y = 17.5f; w.P.Angle = 0;
+                    w.P.Has[7] = true; w.P.Weapon = 7; w.P.Ammo[4] = 60;
+                    w.WeaponFound(7);
+                    Hold(w, idle, 1.5f);
+                    var demons = new List<Monster>();
+                    foreach (var act in w.Actors) { var mm = act as Monster; if (mm != null && mm.Def == MonsterDef.Fiend && mm.X > 56) demons.Add(mm); }
+                    var fromX = new List<float>(); foreach (var m in demons) fromX.Add(m.X);
+                    Hold(w, fire, 1.5f);
+                    Hold(w, idle, 1.5f);
+                    int dead = 0; float drift = 0;
+                    for (int i = 0; i < demons.Count; i++) { if (!demons[i].Alive) dead++; drift = Math.Max(drift, Math.Abs(demons[i].X - fromX[i])); }
+                    Console.WriteLine("slicer  : " + dead + " of " + demons.Count + " fire demons cut down by one arc");
+                    if (demons.Count != 7 || dead != 7) { Console.WriteLine("  WRONG: one arc from the pedestal should kill every fire demon on the stones"); bad++; }
+                }
+                {
+                    // and before the shot none of them can walk anywhere near the platform
+                    var w = new World(Levels.ById("E2M2"), new Settings(), null);
+                    w.DamageMul = 0;
+                    w.P.X = 47.5f; w.P.Y = 17.5f; w.P.Angle = 0;
+                    w.WeaponFound(7);
+                    Hold(w, idle, 6f);
+                    float nearest = 99;
+                    foreach (var act in w.Actors) { var mm = act as Monster; if (mm != null && mm.Alive && mm.X > 56) nearest = Math.Min(nearest, mm.X - 50); }
+                    Console.WriteLine("slicer  : after six seconds the nearest demon is still " + (nearest + 50 - w.P.X).ToString("0.0", inv) + " tiles from the player");
+                    if (nearest + 50 - w.P.X < 8) { Console.WriteLine("  WRONG: the fire demons should be stranded on their stones"); bad++; }
+                }
+                // the grenade launcher: one grenade into the huddle
+                {
+                    var w = new World(Levels.ById("E2M3"), new Settings(), null);
+                    w.DamageMul = 0;
+                    w.P.X = 6.5f; w.P.Y = 32.5f; w.P.Angle = (float)(Math.PI / 2);
+                    w.P.Has[9] = true; w.P.Weapon = 9; w.P.Ammo[2] = 20;
+                    w.WeaponFound(9);
+                    Hold(w, idle, 1.5f);
+                    var huddle = new List<Monster>();
+                    foreach (var act in w.Actors) { var mm = act as Monster; if (mm != null && mm.Y > 36 && (mm.Def == MonsterDef.Ghoul || mm.Def == MonsterDef.Fiend)) huddle.Add(mm); }
+                    w.Update(1 / 30f, fire);
+                    Hold(w, idle, 3f);
+                    int dead = 0; foreach (var m in huddle) if (!m.Alive) dead++;
+                    Console.WriteLine("grenade : one grenade into the huddle killed " + dead + " of " + huddle.Count);
+                    if (huddle.Count != 6 || dead < 3) { Console.WriteLine("  WRONG: one grenade should take out most of the huddle"); bad++; }
+                }
             }
 
             // ---- the fist: three punches for a possessed, hopeless against a gluttony demon

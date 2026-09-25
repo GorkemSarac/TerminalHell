@@ -170,12 +170,14 @@ namespace TerminalHell
         /// <summary>Developer aid: renders one in-game frame (with HUD) to a PNG without a console.</summary>
         public float DebugFireFor;
 
+        public bool DebugSpringTraps;   // --dev-frame ... trap: the level's weapon traps have already gone off
         public void DebugFrame(int cols, int rows, int level, float x, float y, float angleDeg, float simSeconds, string outPath, bool ascii, int weapon, float pitch)
         {
             scr.Resize(cols, rows);
             NewGame(level);
             world.P.X = x; world.P.Y = y; world.P.Angle = (float)(angleDeg * Math.PI / 180);
             world.P.Pitch = pitch;
+            if (DebugSpringTraps) for (int i = 0; i < Player.Weapons; i++) world.WeaponFound(i);
             if (weapon >= 0)
             {
                 for (int i = 0; i < Player.Weapons; i++) world.P.Has[i] = true;

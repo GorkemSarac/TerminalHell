@@ -361,7 +361,7 @@ namespace TerminalHell
                     else if (k == CellKind.Door)
                     {
                         var d = m.Doors[m.DoorIdx[i]];
-                        c = d.IsExit ? Col.Rgb(80, 255, 80) : d.Key == 1 ? Col.Rgb(255, 60, 40) : d.Key == 2 ? Col.Rgb(70, 130, 255) : d.Key == 3 ? Col.Rgb(255, 220, 50) : Col.Rgb(220, 200, 120);
+                        c = d.Trap && d.State == DoorState.Closed ? Col.Rgb(190, 60, 40) : d.IsExit ? Col.Rgb(80, 255, 80) : d.Key == 1 ? Col.Rgb(255, 60, 40) : d.Key == 2 ? Col.Rgb(70, 130, 255) : d.Key == 3 ? Col.Rgb(255, 220, 50) : Col.Rgb(220, 200, 120);
                     }
                     else
                     {

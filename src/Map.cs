@@ -21,6 +21,7 @@ namespace TerminalHell
         public bool SealBehind;     // once opened and closed again with the player past it, it locks forever
         public bool SealPositive;   // which side of the doorway counts as "past it" (see World.PastSeal)
         public bool HasOpened, Sealed;
+        public bool Trap;           // a wall panel that slides open by itself when a weapon is picked up (see World.WeaponTraps)
     }
 
     sealed class PushWall
@@ -333,6 +334,43 @@ namespace TerminalHell
             int i = y * W + x;
             if (Kind[i] != CellKind.Wall) return;
             WallTex[i] = (byte)Tex.DoorLitOf(WallTex[i]);
+        }
+
+        /// <summary>Turns plain wall cells into sliding panels that look like the wall around them until something opens them.
+        /// Orientation is worked out with the whole set still counting as wall, so a row of panels lines up as one wall.</summary>
+        public void AddTrapDoors(List<int[]> cells)
+        {
+            var set = new HashSet<int>();
+            foreach (var c in cells) set.Add(c[1] * W + c[0]);
+            Func<int, int, bool> wallish = (x, y) => IsWallTile(x, y) || (In(x, y) && set.Contains(y * W + x));
+            var made = new List<Door>();
+            foreach (var c in cells)
+            {
+                int i = c[1] * W + c[0];
+                if (Kind[i] != CellKind.Wall) continue;
+                var d = new Door();
+                d.X = c[0]; d.Y = c[1];
+                d.Trap = true;
+                d.Horizontal = wallish(c[0] - 1, c[1]) && wallish(c[0] + 1, c[1]);
+                d.Texture = WallTex[i];
+                made.Add(d);
+            }
+            foreach (var d in made)
+            {
+                int i = d.Y * W + d.X;
+                Kind[i] = CellKind.Door;
+                DoorIdx[i] = (short)Doors.Count;
+                WallHeight[i] = 1;
+                Doors.Add(d);
+                // the floor under a panel follows whichever open neighbour is not a hazard
+                for (int k = 0; k < 4; k++)
+                {
+                    int nx = d.X + DX8[k * 2], ny = d.Y + DY8[k * 2];
+                    if (!In(nx, ny)) continue;
+                    int j = ny * W + nx;
+                    if (Kind[j] == CellKind.Empty && !HurtFloor(j)) { Floor[i] = Floor[j]; break; }
+                }
+            }
         }
 
         public bool IsWallTile(int x, int y)

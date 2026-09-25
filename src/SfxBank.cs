@@ -346,6 +346,23 @@ namespace TerminalHell
             }
             bank[(int)Sfx.RayCharge] = b;
 
+            // the grenade launcher's "thump": a hollow low note dropping fast, like a cork leaving a bottle the size of a barrel
+            b = Buf(0.36f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    ph += (52 + 150 * (float)Math.Exp(-t / 0.045f)) / R;
+                    float tone = (float)Math.Sin(ph * 2 * Math.PI);
+                    float click = f.Process(Rnd(), 700, 0.4f, 0) * Env(t, 0.001f, 0.025f) * 0.45f;
+                    b[i] = Dist(tone * Env(t, 0.002f, 0.15f) * 1.7f, 1.4f) + click;
+                }
+                Normalize(b, 0.92f);
+            }
+            bank[(int)Sfx.Thump] = b;
+
             // the laser ray going off: a sheet of light tearing outwards, a bright snap dropping into a whoosh
             b = Buf(0.7f);
             {
