@@ -18,30 +18,32 @@ namespace TerminalHell
         public Sfx Sound;
         public float Anim;           // length of the firing animation
         public int Barrels = 1;      // shells spent per shot (the double barrel fires 2, or 1 if that's all that's left)
-        public int AmmoPerShot = 1;  // ammo a single shot needs before it can fire at all (the laser ray takes a handful of cells)
+        public int AmmoPerShot = 1;  // ammo a single shot needs before it can fire at all (the laser slicer takes a handful of cells)
+        public int AmmoUse = 1;      // ammo one shot spends (the machine gun burns 2 bullets per shot, though it fires only one)
+        public float Falloff;        // > 0: pellets lose damage with distance, down to a tenth of it at this many tiles (double barrel)
         public float Knockback;      // shoves the player backwards on firing
         public bool Saw;             // a continuous melee weapon that forces enemies out of whatever they were doing
         public bool Beam;            // a laser held down: drains ammo and deals damage per second instead of per shot
         public float DrainPerSec, DmgPerSec;
-        public bool Arc;             // the laser ray: charges up, then sweeps a horizontal arc of light through everything in front
-        public float ChargeTime;     // > 0: the trigger winds the weapon up for this long and it fires by itself (ray gun, laser ray)
+        public bool Arc;             // the laser slicer: charges up, then sweeps a horizontal arc of light through everything in front
+        public float ChargeTime;     // > 0: the trigger winds the weapon up for this long and it fires by itself (ray gun, laser slicer)
         public bool Grenade;         // the launcher's alt-fire: a bouncing, fused projectile instead of a straight rocket
 
         public static readonly WeaponDef[] All =
         {
-            new WeaponDef { Name = "FIST", Slot = 1, SlotPos = 0, Cooldown = 0.42f, DmgMin = 8, DmgMax = 22, Melee = true, Sound = Sfx.Punch, Anim = 0.42f },
+            new WeaponDef { Name = "FIST", Slot = 1, SlotPos = 0, Cooldown = 0.42f, DmgMin = 3, DmgMax = 8, Melee = true, Sound = Sfx.Punch, Anim = 0.42f },
             new WeaponDef { Name = "SAW", Slot = 1, SlotPos = 1, Cooldown = 0.12f, DmgMin = 7, DmgMax = 12, Melee = true, Saw = true, Sound = Sfx.SawBite, Anim = 0.14f },
             new WeaponDef { Name = "PISTOL", Slot = 2, SlotPos = 0, Ammo = 0, Cooldown = 0.34f, Spread = 0.02f, DmgMin = 10, DmgMax = 16, Sound = Sfx.Pistol, Anim = 0.25f },
-            new WeaponDef { Name = "MACHINE GUN", Slot = 2, SlotPos = 1, Ammo = 0, Cooldown = 0.105f, Spread = 0.04f, DmgMin = 10, DmgMax = 15, Sound = Sfx.Chaingun, Anim = 0.1f },
+            new WeaponDef { Name = "MACHINE GUN", Slot = 2, SlotPos = 1, Ammo = 0, Cooldown = 0.105f, Spread = 0.11f, DmgMin = 8, DmgMax = 12, AmmoUse = 2, Sound = Sfx.Chaingun, Anim = 0.1f },
             new WeaponDef { Name = "SHOTGUN", Slot = 3, SlotPos = 0, Ammo = 1, Cooldown = 0.95f, Pellets = 7, Spread = 0.085f, DmgMin = 7, DmgMax = 14, Sound = Sfx.Shotgun, Anim = 0.9f },
-            new WeaponDef { Name = "DOUBLE SHOTGUN", Slot = 3, SlotPos = 1, Ammo = 1, Cooldown = 1.3f, Pellets = 9, Spread = 0.14f, DmgMin = 8, DmgMax = 15,
-                Barrels = 2, Knockback = 4.8f, Sound = Sfx.DoubleShotgun, Anim = 1.25f },
-            new WeaponDef { Name = "LASER", Slot = 4, SlotPos = 0, Ammo = 4, Cooldown = 0, DmgPerSec = 70, DrainPerSec = 12, Beam = true, Sound = Sfx.Laser, Anim = 0.12f },
-            new WeaponDef { Name = "LASER RAY", Slot = 4, SlotPos = 1, Ammo = 4, AmmoPerShot = 5, ChargeTime = 0.85f, Cooldown = 1.1f, DmgMin = 70, DmgMax = 100,
+            new WeaponDef { Name = "DOUBLE SHOTGUN", Slot = 3, SlotPos = 1, Ammo = 1, Cooldown = 1.3f, Pellets = 9, Spread = 0.19f, DmgMin = 10, DmgMax = 18,
+                Barrels = 2, Knockback = 4.8f, Falloff = 9f, Sound = Sfx.DoubleShotgun, Anim = 1.25f },
+            new WeaponDef { Name = "BEAM RIFLE", Slot = 4, SlotPos = 0, Ammo = 4, Cooldown = 0, DmgPerSec = 90, DrainPerSec = 12, Beam = true, Sound = Sfx.Laser, Anim = 0.12f },
+            new WeaponDef { Name = "LASER SLICER", Slot = 4, SlotPos = 1, Ammo = 4, AmmoPerShot = 10, ChargeTime = 1.3f, Cooldown = 1.1f, DmgMin = 110, DmgMax = 150,
                 Arc = true, Sound = Sfx.LaserArc, Anim = 0.6f },
-            new WeaponDef { Name = "LAUNCHER", Slot = 5, SlotPos = 0, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
-            new WeaponDef { Name = "GRENADE LAUNCHER", Slot = 5, SlotPos = 1, Ammo = 2, Cooldown = 0.7f, DmgMin = 45, DmgMax = 85, Grenade = true, Sound = Sfx.GrenadeLaunch, Anim = 0.6f },
-            new WeaponDef { Name = "RAY GUN", Slot = 6, SlotPos = 0, Ammo = 3, ChargeTime = Player.RayChargeTime, Cooldown = 0.9f, DmgMin = 90, DmgMax = 140, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
+            new WeaponDef { Name = "LAUNCHER", Slot = 5, SlotPos = 1, Ammo = 2, Cooldown = 0.8f, DmgMin = 40, DmgMax = 80, Rocket = true, Sound = Sfx.Rocket, Anim = 0.5f },
+            new WeaponDef { Name = "GRENADE LAUNCHER", Slot = 5, SlotPos = 0, Ammo = 2, Cooldown = 0.7f, DmgMin = 45, DmgMax = 85, Grenade = true, Sound = Sfx.GrenadeLaunch, Anim = 0.6f },
+            new WeaponDef { Name = "RAY GUN", Slot = 6, SlotPos = 0, Ammo = 3, ChargeTime = Player.RayChargeTime, Cooldown = 0.9f, DmgMin = 180, DmgMax = 280, Ray = true, Sound = Sfx.RayGun, Anim = 0.5f },
         };
 
         /// <summary>The two weapon indices that live in a slot (1..6); -1 where there is no second one (the ray gun).</summary>
@@ -106,7 +108,7 @@ namespace TerminalHell
         public float SawBite;     // > 0: the saw is chewing into something right now (sparks, judder)
         public int LastShots = 2; // how many barrels the double barrel last fired (the reload ejects that many shells)
 
-        public const float RayChargeTime = 1.2f;
+        public const float RayChargeTime = 2.4f;
 
         // a hop of about a third of a metre: enough to clear a lava tile with a run-up, never enough to reach the ceiling
         public const float JumpSpeed = 2.9f, Gravity = 12f, MaxJumpZ = 0.4f;
@@ -350,11 +352,11 @@ namespace TerminalHell
             SawBite = Math.Max(0, SawBite - dt);
             if (wd.ChargeTime > 0)
             {
-                // the ray gun and the laser ray wind up while the trigger is held, then let go by themselves
+                // the ray gun and the laser slicer wind up while the trigger is held, then let go by themselves
                 bool ready = Cooldown <= 0 && canShoot;
                 if (inp.Fire && ready && HasAmmoFor(Weapon))
                 {
-                    if (Charge <= 0) Audio.Play(wd.Ray ? Sfx.RayGun : Sfx.LaserCharge, 0.85f, 0, wd.Ray ? 0.55f : 1f, 0);   // the winding whine
+                    if (Charge <= 0) Audio.Play(wd.Ray ? Sfx.RayCharge : Sfx.LaserCharge, 0.85f, 0, 1f, 0);   // the winding whine
                     Charge += dt;
                     if (Charge >= wd.ChargeTime)
                     {
@@ -401,7 +403,11 @@ namespace TerminalHell
                 else
                 {
                     int shots = 1;
-                    if (wd.Ammo >= 0) { shots = Math.Max(1, Math.Min(wd.Barrels, Ammo[wd.Ammo])); Ammo[wd.Ammo] -= shots; }
+                    if (wd.Ammo >= 0)
+                    {
+                        shots = Math.Max(1, Math.Min(wd.Barrels, Ammo[wd.Ammo]));
+                        Ammo[wd.Ammo] -= Math.Min(Ammo[wd.Ammo], Math.Max(shots, wd.AmmoUse));
+                    }
                     LastShots = shots;
                     Cooldown = wd.Cooldown;
                     FireAnim = 0;
@@ -491,8 +497,8 @@ namespace TerminalHell
                 case 'W': GiveWeapon(w, 10, 3, 2, "YOU GOT THE RAY GUN! IT IS WARM."); break;
                 case '5': GiveWeapon(w, 1, -1, 0, "YOU FOUND A SAW."); break;
                 case '6': GiveWeapon(w, 5, 1, 8, "YOU FOUND THE DOUBLE BARREL SHOTGUN!"); break;
-                case '7': GiveWeapon(w, 6, 4, 40, "YOU FOUND THE LASER!"); break;
-                case '8': GiveWeapon(w, 7, 4, 20, "YOU FOUND THE LASER RAY!"); break;
+                case '7': GiveWeapon(w, 6, 4, 40, "YOU FOUND THE BEAM RIFLE!"); break;
+                case '8': GiveWeapon(w, 7, 4, 30, "YOU FOUND THE LASER SLICER!"); break;
                 case '9': GiveWeapon(w, 9, 2, 3, "YOU FOUND THE GRENADE LAUNCHER!"); break;
                 case 'w': if (!AddAmmo(3, 1)) return false; w.Message("PICKED UP A SOUL CELL.", Col.Rgb(255, 150, 230)); break;
                 case 'r': Keys[1] = true; w.Message("PICKED UP A RED KEYCARD.", Col.Rgb(255, 80, 60)); Audio.Play(Sfx.KeyPickup); break;

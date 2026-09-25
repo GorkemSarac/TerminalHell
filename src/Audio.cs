@@ -12,7 +12,7 @@ namespace TerminalHell
         PlayerPain, PlayerDeath, GhoulSight, GhoulPain, GhoulDeath, GhoulShot, FiendSight, FiendPain, FiendDeath, FiendThrow,
         FireHit, BruteSight, BrutePain, BruteDeath, BruteBite, BossSight, BossPain, BossDeath, BossStep, Switch, NoWay,
         PushWall, MenuMove, MenuSelect, DryFire, HurtFloor, Secret, WeaponUp, Growl, Jump, Land, Parry, RayGun, Chime,
-        Saw, Laser, GrenadeBounce, LaserHum, LaserCharge, LaserArc, SawBite, DoubleShotgun, GrenadeLaunch, Count
+        Saw, Laser, GrenadeBounce, LaserHum, LaserCharge, LaserArc, SawBite, DoubleShotgun, GrenadeLaunch, RayCharge, Count
     }
 
     static class Audio

@@ -9,7 +9,7 @@ namespace TerminalHell
     static class Program
     {
         // major.minor.patch - patch for fixes, minor for new features (keep linux/TerminalHell.Linux.csproj in step)
-        public const string Version = "1.13.1";
+        public const string Version = "1.16.0";
 
         [STAThread]
         static int Main(string[] args)
@@ -551,7 +551,7 @@ namespace TerminalHell
                             var hold = new PlayerInput();
                             hold.Fire = true;
                             float charged = 0;
-                            for (int f = 0; f < 60; f++)
+                            for (int f = 0; f < 110; f++)
                             {
                                 w.Update(1 / 30f, hold);
                                 charged = Math.Max(charged, w.P.Charge);
@@ -1319,7 +1319,7 @@ namespace TerminalHell
                 if (w.P.Ammo[1] != 0 || w.P.LastShots != 1) { Console.WriteLine("  WRONG: with one shell it should fire the one"); bad++; }
             }
 
-            // ---- the laser: a second of burn drains about 12 cells and kills what it's on
+            // ---- the beam rifle: a second of burn drains about 12 cells and kills what it's on
             {
                 var w = Range();
                 w.P.X = 110.5f; w.P.Y = 18.5f; w.P.Angle = (float)(-Math.PI / 2);
@@ -1329,7 +1329,7 @@ namespace TerminalHell
                 for (int f = 0; f < 30; f++) { w.Update(1 / 30f, fire); if (w.P.BeamOn) on++; if (f == 5) dist = w.P.BeamDist; }
                 int used = 50 - w.P.Ammo[4];
                 Hold(w, idle, 0.1f);
-                Console.WriteLine("laser   : beam on " + on + "/30 frames, reaching " + dist.ToString("0.0", inv) + ", " + used + " cells, target " +
+                Console.WriteLine("beam rif: beam on " + on + "/30 frames, reaching " + dist.ToString("0.0", inv) + ", " + used + " cells, target " +
                     (g.Alive ? "still alive (" + g.Health.ToString("0", inv) + ")" : "dead") + ", beam off after release " + !w.P.BeamOn);
                 if (on < 28) { Console.WriteLine("  WRONG: the beam should stay on while the trigger is held"); bad++; }
                 if (Math.Abs(dist - 4.7f) > 0.4f) { Console.WriteLine("  WRONG: the beam should end on the ghoul"); bad++; }
@@ -1338,31 +1338,179 @@ namespace TerminalHell
                 if (w.P.BeamOn) { Console.WriteLine("  WRONG: the beam should cut out when the trigger is let go"); bad++; }
             }
 
-            // ---- the laser ray: charges, then one arc hits both targets in front, not the one behind a wall or behind you
+            // ---- the laser slicer: charges, then one arc hits both targets in front, not the one behind a wall or behind you
             {
                 var w = Range();
                 w.P.X = 106.5f; w.P.Y = 10.5f; w.P.Angle = (float)Math.PI;
-                w.P.Has[7] = true; w.P.Weapon = 7; w.P.Ammo[4] = 20;
+                w.P.Has[7] = true; w.P.Weapon = 7; w.P.Ammo[4] = 40;
                 var front = Dummy(w, MonsterDef.Ghoul, 104.5f, 9.5f, 1000);
                 var wide = Dummy(w, MonsterDef.Ghoul, 104.5f, 12.0f, 1000);
                 var walled = Dummy(w, MonsterDef.Ghoul, 100.5f, 12.5f, 1000);
                 var behind = Dummy(w, MonsterDef.Ghoul, 109.5f, 10.5f, 1000);
                 float firedAt = -1;
-                for (int f = 0; f < 40 && firedAt < 0; f++) { w.Update(1 / 30f, fire); if (w.P.Ammo[4] < 20) firedAt = f / 30f; }
+                for (int f = 0; f < 120 && firedAt < 0; f++) { w.Update(1 / 30f, fire); if (w.P.Ammo[4] < 40) firedAt = f / 30f; }
                 Hold(w, idle, 1.6f);
                 Func<Monster, string> hurt = m => m.Health < 1000 ? "hit" : "missed";
-                Console.WriteLine("laser ry: fired after " + firedAt.ToString("0.00", inv) + "s charge, " + (20 - w.P.Ammo[4]) + " cells; ahead " + hurt(front) +
+                Console.WriteLine("slicer  : fired after " + firedAt.ToString("0.00", inv) + "s charge, " + (40 - w.P.Ammo[4]) + " cells; ahead " + hurt(front) +
                     ", off to the side " + hurt(wide) + ", behind a wall " + hurt(walled) + ", behind you " + hurt(behind));
-                if (firedAt < 0.75f || firedAt > 1.0f) { Console.WriteLine("  WRONG: it should charge for about 0.85s first"); bad++; }
-                if (w.P.Ammo[4] != 15) { Console.WriteLine("  WRONG: one arc should take 5 cells"); bad++; }
+                if (firedAt < 1.15f || firedAt > 1.5f) { Console.WriteLine("  WRONG: it should charge for about 1.3s first"); bad++; }
+                if (w.P.Ammo[4] != 30) { Console.WriteLine("  WRONG: one arc should take 10 cells"); bad++; }
                 if (front.Health >= 1000 || wide.Health >= 1000) { Console.WriteLine("  WRONG: the arc should hit everything in front"); bad++; }
                 if (walled.Health < 1000) { Console.WriteLine("  WRONG: walls should stop it"); bad++; }
                 if (behind.Health < 1000) { Console.WriteLine("  WRONG: it should only go forwards"); bad++; }
-                w.P.Ammo[4] = 4;
+                w.P.Ammo[4] = 9;
                 Hold(w, idle, 1.2f);
-                Hold(w, fire, 1.2f);
-                Console.WriteLine("laser ry: with 4 cells: " + (w.P.Ammo[4] == 4 ? "won't fire" : "FIRED"));
-                if (w.P.Ammo[4] != 4) bad++;
+                Hold(w, fire, 3.2f);
+                Console.WriteLine("slicer  : with 9 cells: " + (w.P.Ammo[4] == 9 ? "won't fire" : "FIRED"));
+                if (w.P.Ammo[4] != 9) bad++;
+            }
+
+            // ---- the new balance: staggering needs a big single hit, the machine gun burns two bullets, a dry gun's ammo drops, the fist is weak
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 18.5f; w.P.Angle = (float)(-Math.PI / 2);
+                var tough = Dummy(w, MonsterDef.Fiend, 110.5f, 12.5f, MonsterDef.Fiend.Health);
+                tough.State = MState.Chase; tough.StateTime = 0;
+                for (int i = 0; i < 12; i++) { tough.Damage(w, 4, w.P, false); w.Update(1 / 30f, idle); tough.State = MState.Chase; }
+                bool smallStaggered = tough.State == MState.Pain;
+                tough.State = MState.Chase; tough.Health = tough.Def.Health;
+                for (int i = 0; i < 12; i++) tough.Damage(w, 5, w.P, false);   // one blast: twelve pellets at once, 60 of 90 health
+                bool bigStaggered = tough.State == MState.Pain;
+                Console.WriteLine("stagger : twelve separate 4s -> " + smallStaggered + ", one 60 blast -> " + bigStaggered);
+                if (smallStaggered) { Console.WriteLine("  WRONG: a stream of small hits should not stagger"); bad++; }
+                if (!bigStaggered) { Console.WriteLine("  WRONG: a hit for over half its health should stagger"); bad++; }
+
+                var w2 = Range();
+                w2.P.X = 110.5f; w2.P.Y = 18.5f; w2.P.Angle = (float)(-Math.PI / 2);
+                w2.P.Has[3] = true; w2.P.Weapon = 3; w2.P.Ammo[0] = 20;
+                w2.Update(1 / 30f, fire);
+                Console.WriteLine("machine : 20 bullets -> " + w2.P.Ammo[0] + " after one shot");
+                if (w2.P.Ammo[0] != 18) { Console.WriteLine("  WRONG: one machine gun shot should cost 2 bullets"); bad++; }
+
+                var w3 = Range();
+                w3.P.X = 110.5f; w3.P.Y = 18.5f; w3.P.Angle = (float)(-Math.PI / 2);
+                w3.P.Has[2] = true; w3.P.Has[4] = true; w3.P.Has[10] = true;
+                w3.P.Ammo[0] = 0; w3.P.Ammo[1] = 5; w3.P.Ammo[3] = 0;
+                int before = 0, after = 0;
+                foreach (var act in w3.Actors) if (act is Item) before++;
+                var victim = Dummy(w3, MonsterDef.Fiend, 110.5f, 14.5f, 1);
+                victim.Damage(w3, 50, w3.P, false);
+                w3.Update(1 / 30f, idle);
+                foreach (var act in w3.Actors) if (act is Item) after++;
+                Console.WriteLine("drop    : pistol empty, kill -> " + (after - before) + " item(s) dropped");
+                if (after - before < 1) { Console.WriteLine("  WRONG: a kill with an empty gun should drop ammo for it"); bad++; }
+                var w4 = Range();
+                for (int i = 0; i < Player.Weapons; i++) w4.P.Has[i] = false;
+                for (int i = 0; i < Player.AmmoTypes; i++) w4.P.Ammo[i] = 50;
+                w4.P.Has[10] = true; w4.P.Ammo[3] = 0;
+                int b4 = 0, a4 = 0;
+                foreach (var act in w4.Actors) if (act is Item) b4++;
+                var v4 = Dummy(w4, MonsterDef.Imp, 110.5f, 14.5f, 1);
+                v4.Damage(w4, 50, w4.P, false);
+                w4.Update(1 / 30f, idle);
+                foreach (var act in w4.Actors) if (act is Item) a4++;
+                if (a4 - b4 > 0) { Console.WriteLine("  WRONG: nothing should drop for an empty ray gun"); bad++; }
+
+                var w5 = Range();
+                w5.P.X = 110.5f; w5.P.Y = 18.5f; w5.P.Angle = (float)(-Math.PI / 2);
+                var near5 = Dummy(w5, MonsterDef.Brute, 110.5f, 17.0f, 1000);
+                var far5 = Dummy(w5, MonsterDef.Brute, 110.5f, 10.5f, 1000);
+                w5.P.Has[5] = true; w5.P.Weapon = 5; w5.P.Ammo[1] = 10;
+                w5.Update(1 / 30f, fire);
+                float nearHurt = 1000 - near5.Health, farHurt = 1000 - far5.Health;
+                Console.WriteLine("dbl bar : point blank " + nearHurt.ToString("0", inv) + " damage, eight tiles " + farHurt.ToString("0", inv));
+                if (nearHurt < 60) { Console.WriteLine("  WRONG: the double barrel should be brutal up close"); bad++; }
+                if (farHurt > nearHurt * 0.25f) { Console.WriteLine("  WRONG: the double barrel should be weak at range"); bad++; }
+            }
+
+            // ---- the Warden's new attacks: a ring of ground fire only a jump clears, and two brutes called in; and ammo for the lowest gun
+            {
+                var w = Range();
+                w.P.X = 110.5f; w.P.Y = 18.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.DamageMul = 1;
+                var boss = Dummy(w, MonsterDef.Warden, 110.5f, 13.5f, 1000);
+                boss.State = MState.WindUp; boss.StateTime = 0.01f; boss.BossPattern = 1;
+                float hp0 = w.P.HP;
+                for (int f = 0; f < 60; f++) w.Update(1 / 30f, idle);
+                float ringHurt = hp0 - w.P.HP;
+                var w2 = Range();
+                w2.P.X = 110.5f; w2.P.Y = 18.5f; w2.P.Angle = (float)(-Math.PI / 2);
+                w2.DamageMul = 1;
+                var boss2 = Dummy(w2, MonsterDef.Warden, 110.5f, 13.5f, 1000);
+                boss2.State = MState.WindUp; boss2.StateTime = 0.01f; boss2.BossPattern = 1;
+                float hp1 = w2.P.HP;
+                for (int f = 0; f < 60; f++) { w2.P.Z = 0.3f; w2.Update(1 / 30f, idle); }
+                float jumpedHurt = hp1 - w2.P.HP;
+                Console.WriteLine("flames  : standing took " + ringHurt.ToString("0", inv) + ", jumping took " + jumpedHurt.ToString("0", inv));
+                if (ringHurt < 10) { Console.WriteLine("  WRONG: the ring of fire should burn someone standing in it"); bad++; }
+                if (jumpedHurt > 0) { Console.WriteLine("  WRONG: a jump should clear the ring of fire"); bad++; }
+                var w2b = Range();
+                w2b.P.X = 110.5f; w2b.P.Y = 18.5f; w2b.P.Angle = (float)(-Math.PI / 2);
+                w2b.DamageMul = 1;
+                w2b.Actors.Add(new Decor(Art.Pillar, 110.5f, 16f, true, 0.3f));
+                var boss2b = Dummy(w2b, MonsterDef.Warden, 110.5f, 13.5f, 1000);
+                boss2b.State = MState.WindUp; boss2b.StateTime = 0.01f; boss2b.BossPattern = 1;
+                float hp2 = w2b.P.HP;
+                for (int f = 0; f < 60; f++) w2b.Update(1 / 30f, idle);
+                Console.WriteLine("flames  : behind a pillar took " + (hp2 - w2b.P.HP).ToString("0", inv));
+                if (hp2 - w2b.P.HP > 0) { Console.WriteLine("  WRONG: a pillar should shield what is behind it from the fire"); bad++; }
+
+                var w3 = Range();
+                w3.P.X = 110.5f; w3.P.Y = 18.5f; w3.P.Angle = (float)(-Math.PI / 2);
+                var boss3 = Dummy(w3, MonsterDef.Warden, 110.5f, 14.5f, 1000);
+                boss3.State = MState.WindUp; boss3.StateTime = 0.01f; boss3.BossPattern = 2;
+                w3.Update(1 / 30f, idle); w3.Update(1 / 30f, idle);
+                int brutes = 0;
+                foreach (var act in w3.Actors) { var mm = act as Monster; if (mm != null && mm.Summoned) brutes++; }
+                for (int again = 0; again < 4; again++)
+                {
+                    boss3.State = MState.WindUp; boss3.StateTime = 0.01f; boss3.BossPattern = 2;
+                    w3.Update(1 / 30f, idle); w3.Update(1 / 30f, idle);
+                }
+                int total = 0;
+                foreach (var act in w3.Actors) { var mm = act as Monster; if (mm != null && mm.Summoned) total++; }
+                Console.WriteLine("summon  : " + brutes + " demons called in at first, " + total + " after five calls");
+                if (brutes != 2) { Console.WriteLine("  WRONG: it should call in two demons"); bad++; }
+                if (total != 4) { Console.WriteLine("  WRONG: it should never have more than four of its summons alive"); bad++; }
+
+                var w4 = Range();
+                for (int i = 0; i < Player.Weapons; i++) w4.P.Has[i] = false;
+                w4.P.Has[2] = true; w4.P.Has[4] = true;
+                w4.P.Ammo[0] = 150; w4.P.Ammo[1] = 3;
+                int shellDrops = 0, trials = 40;
+                for (int i = 0; i < trials; i++)
+                {
+                    int before = 0, after = 0;
+                    foreach (var act in w4.Actors) { var it = act as Item; if (it != null && it.Code == 'e') before++; }
+                    var v = Dummy(w4, MonsterDef.Imp, 110.5f, 14.5f, 1);
+                    v.Damage(w4, 50, w4.P, false);
+                    w4.Update(1 / 30f, idle);
+                    foreach (var act in w4.Actors) { var it = act as Item; if (it != null && it.Code == 'e') after++; }
+                    if (after > before) shellDrops++;
+                }
+                Console.WriteLine("lowest  : pistol full-ish, shotgun nearly dry: shells dropped " + shellDrops + "/" + trials);
+                if (shellDrops < trials / 2) { Console.WriteLine("  WRONG: kills should mostly drop shells for the shotgun"); bad++; }
+            }
+
+            // ---- the fist: three punches for a possessed, hopeless against a gluttony demon
+            {
+                var w = Range();
+                w.DamageMul = 1;
+                w.P.X = 110.5f; w.P.Y = 15.5f; w.P.Angle = (float)(-Math.PI / 2);
+                w.P.Weapon = 0;
+                var g = Dummy(w, MonsterDef.Ghoul, 110.5f, 14.3f, MonsterDef.Ghoul.Health);
+                int punches = 0;
+                for (int f = 0; f < 200 && g.Alive; f++)
+                {
+                    int before = (int)g.Health;
+                    w.Update(1 / 30f, fire);
+                    if (g.Health < before || !g.Alive) punches++;
+                }
+                var big = Dummy(w, MonsterDef.Brute, 110.5f, 14.3f, MonsterDef.Brute.Health);
+                g.Y = 5;
+                Hold(w, fire, 3f);
+                Console.WriteLine("fist    : possessed died after " + punches + " punches; gluttony demon lost " + (MonsterDef.Brute.Health - big.Health).ToString("0", inv) + " in 3s");
+                if (punches != 3) { Console.WriteLine("  WRONG: a possessed should die in three punches"); bad++; }
             }
 
             // ---- grenades: a low lob that bounces along and goes off on its fuse; straight away against a monster

@@ -73,26 +73,26 @@ namespace TerminalHell
             Ghoul = new MonsterDef
             {
                 // fires a small, fast round: dodgeable if you are moving, and it can be parried
-                Name = "GHOUL", Code = 'z', Health = 30, Speed = 1.35f, Radius = 0.3f, PainChance = 0.7f, Attack = AttackType.Projectile,
+                Name = "POSSESSED", Code = 'z', Health = 38, Speed = 1.35f, Radius = 0.3f, PainChance = 0.7f, Attack = AttackType.Projectile,
                 ProjType = Projectile.BULLET, ProjSpeed = 13f,
                 Range = 16, WindUp = 0.65f, CoolMin = 2.3f, CoolMax = 4.2f, DmgMin = 5, DmgMax = 12, Shots = 1,
                 Sight = Sfx.GhoulSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.GhoulShot, Drop = 'c', Frames = Art.Ghoul, Score = 100,
             };
             Fiend = new MonsterDef
             {
-                Name = "FIEND", Code = 'i', Health = 60, Speed = 1.6f, Radius = 0.32f, PainChance = 0.6f, Attack = AttackType.Projectile,
+                Name = "FIRE DEMON", Code = 'i', Health = 75, Speed = 1.6f, Radius = 0.32f, PainChance = 0.6f, Attack = AttackType.Projectile,
                 Range = 18, WindUp = 0.75f, CoolMin = 2.2f, CoolMax = 4.2f, DmgMin = 8, DmgMax = 20, ProjSpeed = 6.0f,
                 Sight = Sfx.FiendSight, Pain = Sfx.FiendPain, Death = Sfx.FiendDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.Fiend, MeleeChance = 0.8f, Score = 250,
             };
             Brute = new MonsterDef
             {
-                Name = "BRUTE", Code = 'p', Health = 150, Speed = 2.5f, Radius = 0.42f, PainChance = 0.45f, Attack = AttackType.Melee,
+                Name = "GLUTTONY DEMON", Code = 'p', Health = 188, Speed = 2.5f, Radius = 0.42f, PainChance = 0.45f, Attack = AttackType.Melee,
                 Range = 1.4f, MeleeRange = 1.25f, WindUp = 0.5f, CoolMin = 0.9f, CoolMax = 1.6f, DmgMin = 10, DmgMax = 28,
                 Sight = Sfx.BruteSight, Pain = Sfx.BrutePain, Death = Sfx.BruteDeath, AttackSnd = Sfx.BruteBite, Frames = Art.Brute, Score = 500,
             };
             Warden = new MonsterDef
             {
-                Name = "WARDEN", Code = 'K', Health = 1400, Speed = 1.3f, Radius = 0.62f, PainChance = 0.08f, Attack = AttackType.Rockets,
+                Name = "WARDEN", Code = 'K', Health = 2100, Speed = 1.3f, Radius = 0.62f, PainChance = 0.08f, Attack = AttackType.Rockets,
                 Range = 30, WindUp = 1.65f, CoolMin = 1.8f, CoolMax = 3.0f, DmgMin = 30, DmgMax = 60, Shots = 3, ProjSpeed = 9,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.Rocket, Frames = Art.Warden,
                 Scale = 1f / 58, Boss = true, Drop = 'y', DropChance = 1f, Score = 5000,   // the key it carries always drops
@@ -100,7 +100,7 @@ namespace TerminalHell
             Imp = new MonsterDef
             {
                 // small, fast, and only dangerous up close: it closes distance quickly and claws
-                Name = "LESSER DEMON", Code = '\'', Health = 25, Speed = 2.9f, Radius = 0.22f, PainChance = 0.35f, Attack = AttackType.Melee,
+                Name = "LESSER DEMON", Code = '\'', Health = 32, Speed = 2.9f, Radius = 0.22f, PainChance = 0.35f, Attack = AttackType.Melee,
                 Range = 1.3f, MeleeRange = 1.0f, WindUp = 0.22f, CoolMin = 0.5f, CoolMax = 1.0f, DmgMin = 6, DmgMax = 14,
                 Sight = Sfx.FiendSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.BruteBite, Drop = '\0',
                 Frames = Art.Imp, Scale = 1f / 76, Score = 150,
@@ -108,7 +108,7 @@ namespace TerminalHell
             Bat = new MonsterDef
             {
                 // a small flier that keeps its distance and spits venom - the machine gun earns its keep here
-                Name = "BAT DEMON", Health = 20, Speed = 2.4f, Radius = 0.2f, PainChance = 0.4f, Attack = AttackType.Projectile,
+                Name = "BAT DEMON", Health = 25, Speed = 2.4f, Radius = 0.2f, PainChance = 0.4f, Attack = AttackType.Projectile,
                 ProjType = Projectile.SPIT, ProjSpeed = 9f, Range = 15, WindUp = 0.4f, CoolMin = 1.3f, CoolMax = 2.4f, DmgMin = 4, DmgMax = 10,
                 Sight = Sfx.FiendSight, Pain = Sfx.GhoulPain, Death = Sfx.GhoulDeath, AttackSnd = Sfx.FiendThrow, Drop = '\0',
                 Frames = Art.Bat, Scale = 1f / 90, Flies = true, HoverZ = 0.6f, Score = 120,
@@ -116,7 +116,7 @@ namespace TerminalHell
             FireDemon = new MonsterDef
             {
                 // a smaller Warden built around fireballs instead of rockets: a volley, a summoning scream, a nova
-                Name = "ELDER FIRE DEMON", Health = 700, Speed = 1.4f, Radius = 0.5f, PainChance = 0.06f, Attack = AttackType.Projectile,
+                Name = "ELDER FIRE DEMON", Health = 1050, Speed = 1.4f, Radius = 0.5f, PainChance = 0.06f, Attack = AttackType.Projectile,
                 ProjType = Projectile.FIREBALL, ProjSpeed = 7f, Range = 22, WindUp = 1.0f, CoolMin = 1.8f, CoolMax = 2.8f, DmgMin = 15, DmgMax = 32, Shots = 3,
                 Sight = Sfx.BossSight, Pain = Sfx.BossPain, Death = Sfx.BossDeath, AttackSnd = Sfx.FiendThrow, Frames = Art.ElderFireDemon,
                 Scale = 1f / 46, Boss = true, FireBoss = true, Drop = 'y', DropChance = 1f, Score = 3500,
@@ -157,6 +157,9 @@ namespace TerminalHell
         public bool Ambush;
         public char Carries;         // an item this one always drops when it dies (a keycard, say)
         public int Interrupted;      // how many times a saw has knocked it out of an attack it was winding up
+        public bool Summoned;        // called in by the Warden rather than placed on the map
+        public float SlowTime;       // > 0: a beam is burning it, and it moves at less than half speed
+        float attackDamage, attackTime = -1;   // damage taken within one instant (one blast, however many pellets): only a big one staggers
         float stuckTime;
 
         public Monster(MonsterDef d, float x, float y)
@@ -215,9 +218,17 @@ namespace TerminalHell
                 return;
             }
             if (State == MState.Idle) Alert(w);
+            // one attack is everything that lands in the same instant - all the pellets of a shotgun blast, a rocket and its
+            // blast - and only an attack that takes more than half of its health staggers it. A stream of small hits never does
+            bool sameAttack = w.Time == attackTime;
+            float before = sameAttack ? attackDamage : 0;
+            attackTime = w.Time;
+            attackDamage = before + amount;
+            float limit = Def.Health * 0.5f;
+            bool bigHit = before <= limit && attackDamage > limit;
             // the boss cannot be staggered out of an attack once it has committed to one
             bool bossAttacking = Def.Boss && (State == MState.WindUp || State == MState.Fire);
-            if (!bossAttacking && w.Rng.NextDouble() < Def.PainChance && State != MState.Fire)
+            if (!bossAttacking && bigHit && State != MState.Fire)
             {
                 State = MState.Pain;
                 StateTime = Def.PainTime;
@@ -237,12 +248,44 @@ namespace TerminalHell
             // not every corpse leaves something behind: ammo is meant to be worth looking for
             if (Carries != '\0') w.SpawnItem(Carries, X + 0.05f, Y + 0.05f, true);
             else if (Def.Drop != '\0' && w.Rng.NextDouble() < Def.DropChance) w.SpawnItem(Def.Drop, X + 0.05f, Y + 0.05f, true);
+            DropForEmptyGun(w);
             if (Def.Boss) w.BossKilled(Def.Name);
+        }
+
+        /// <summary>Whoever dies leaves ammo for the gun the player is worst off for: of the weapons carried (never the ray gun,
+        /// whose soul cells are rationed) the one whose ammo is lowest against its maximum. A gun that cannot fire at all always
+        /// gets it; the fuller the lowest one is, the less often anything drops, and nothing does above about two thirds.</summary>
+        void DropForEmptyGun(World w)
+        {
+            var p = w.P;
+            float lowest = 2;
+            var dry = new System.Collections.Generic.List<int>();
+            for (int t = 0; t < Player.AmmoTypes; t++)
+            {
+                if (t == 3) continue;
+                int need = 0;   // the fewest the cheapest gun of this type needs to fire at all
+                for (int i = 0; i < Player.Weapons; i++)
+                {
+                    var d = WeaponDef.All[i];
+                    if (!p.Has[i] || d.Ammo != t) continue;
+                    int n = Math.Max(1, d.Barrels > 1 ? 1 : d.AmmoPerShot);
+                    need = need == 0 ? n : Math.Min(need, n);
+                }
+                if (need == 0) continue;
+                float frac = p.Ammo[t] < need ? 0 : (float)p.Ammo[t] / Player.MaxAmmo[t];
+                if (frac < lowest - 0.001f) { lowest = frac; dry.Clear(); dry.Add(t); }
+                else if (frac < lowest + 0.001f) dry.Add(t);
+            }
+            if (dry.Count == 0) return;
+            if (lowest > 0 && w.Rng.NextDouble() >= 1 - lowest * 1.5f) return;
+            char[] items = { 'c', 'e', 'q', '\0', '"' };
+            w.SpawnItem(items[dry[w.Rng.Next(dry.Count)]], X - 0.12f, Y - 0.08f, true);
         }
 
         public override void Update(World w, float dt)
         {
             Flash = Math.Max(0, Flash - dt * 4);
+            SlowTime -= dt;
             Anim += dt;
             if (Def.Flies && Alive) Z = Def.HoverZ + (float)Math.Sin(Anim * 1.7 + Tag) * 0.06f;
             var p = w.P;
@@ -271,7 +314,7 @@ namespace TerminalHell
                 case MState.WindUp:
                     Angle = (float)Math.Atan2(dy, dx);
                     StateTime -= dt;
-                    if (Def.Boss && !Def.FireBoss && Def.Attack != AttackType.Melee)
+                    if (Def.Boss && !Def.FireBoss && Def.Attack != AttackType.Melee && BossPattern == 0)
                     {
                         // the sight follows the player, then holds dead still for the last second before it fires
                         Aiming = true;
@@ -326,9 +369,9 @@ namespace TerminalHell
                     State = MState.WindUp;
                     StateTime = Def.WindUp * (melee ? 0.6f : 1f);
                     ShotsLeft = Def.Shots - 1;
-                    if (Def.FireBoss)
+                    if (Def.FireBoss || Def.Attack == AttackType.Rockets)
                     {
-                        // cycle through the three signature attacks - only the volley is a multi-shot burst
+                        // cycle through the three signature attacks - only the volley (or the rockets) is a multi-shot burst
                         BossPattern = (BossPattern + 1) % 3;
                         if (BossPattern != 0) ShotsLeft = 0;
                     }
@@ -368,7 +411,7 @@ namespace TerminalHell
             float stop = Radius + p.Radius + 0.12f;
             if (dist > stop)
             {
-                float sp = Def.Speed * dt;
+                float sp = Def.Speed * dt * (SlowTime > 0 ? 0.45f : 1f);
                 float ox = X, oy = Y;
                 w.TryMove(this, tx * sp, ty * sp);
                 float moved = (float)Math.Sqrt((X - ox) * (X - ox) + (Y - oy) * (Y - oy));
@@ -444,6 +487,7 @@ namespace TerminalHell
             var p = w.P;
             if (p.Dead) return;
             if (Def.FireBoss && BossPattern != 0) { PerformFireBossSpecial(w); return; }
+            if (Def.Attack == AttackType.Rockets && BossPattern != 0) { PerformWardenSpecial(w); return; }
             bool melee = dist < Def.MeleeRange + p.Radius;
             if (Def.Attack == AttackType.Melee || (melee && Def.MeleeChance > 0 && w.Rng.NextDouble() < Def.MeleeChance))
             {
@@ -486,6 +530,44 @@ namespace TerminalHell
                 float travel = Math.Max(0.3f, reach) / Math.Max(1f, Def.ProjSpeed * w.ProjSpeedMul);
                 pr.VZ = (tz - pr.Z) / travel;
                 w.Add(pr);
+            }
+        }
+
+        /// <summary>The Warden's other two attacks: a ring of flame stamped out along the ground that only a jump clears, and a
+        /// call for help that brings two random demons out of the floor beside it.</summary>
+        void PerformWardenSpecial(World w)
+        {
+            Audio.PlayAt(Def.Sight, X, Y, 1.8f, Tag);
+            if (BossPattern == 1)
+            {
+                Audio.PlayAt(Sfx.Explode, X, Y, 1.4f, Tag);
+                w.Shake(0.7f);
+                w.Add(new FlameRing(w, this, 22, 34));
+                w.Message("THE GROUND BURNS - JUMP!", Col.Rgb(255, 150, 60));
+                return;
+            }
+            w.Shake(0.5f);
+            // two of any of the ordinary demons, at random - though never more than four of its summons standing at once
+            int alive = 0;
+            foreach (var a in w.Actors) { var m = a as Monster; if (m != null && m.Alive && m.Summoned) alive++; }
+            var pool = new[] { MonsterDef.Ghoul, MonsterDef.Fiend, MonsterDef.Brute, MonsterDef.Imp, MonsterDef.Bat };
+            for (int i = 0; i < 2 && alive < 4; i++)
+            {
+                for (int tries = 0; tries < 12; tries++)
+                {
+                    float a = (float)(w.Rng.NextDouble() * Math.PI * 2);
+                    float r = 2.2f + (float)w.Rng.NextDouble() * 1.8f;
+                    float sx = X + (float)Math.Cos(a) * r, sy = Y + (float)Math.Sin(a) * r;
+                    int cx = (int)sx, cy = (int)sy;
+                    if (!w.Map.In(cx, cy) || w.Map.BlocksMove(cx, cy) || !w.Map.LOS(X, Y, sx, sy)) continue;
+                    var brute = new Monster(pool[w.Rng.Next(pool.Length)], sx, sy);
+                    brute.Summoned = true;
+                    brute.Alert(w);
+                    w.Add(brute);
+                    w.Explode(sx, sy, 0.3f, 0, 0.5f, this);
+                    alive++;
+                    break;
+                }
             }
         }
 
@@ -902,6 +984,100 @@ namespace TerminalHell
     /// wide, and burns every body its edge passes over - not just the first one - until the walls stop it. It has no
     /// sprite of its own: each frame it lays a line of short-lived motes along its leading edge.
     /// </summary>
+    /// <summary>
+    /// The Warden's ground fire: a ring that spreads outwards from where it stood with no limit but the walls - each
+    /// direction goes on until it meets one - and burns anything standing on the floor as it passes. Jumping clears it.
+    /// It has no sprite: it lays short-lived flames along itself as it goes.
+    /// </summary>
+    sealed class FlameRing : Actor
+    {
+        public const float Speed = 4.4f, MaxRange = 80f, ClearHeight = 0.15f;
+        const int Samples = 288;
+        readonly float[] wall = new float[Samples];
+        readonly float farthest;
+        readonly int dmgMin, dmgMax;
+        float r = 0.9f, emit;
+        bool hitPlayer;
+
+        public FlameRing(World w, Actor owner, int dmgMin, int dmgMax)
+        {
+            Kind = ActorKind.Effect;
+            X = owner.X; Y = owner.Y;
+            this.dmgMin = dmgMin; this.dmgMax = dmgMax;
+            for (int k = 0; k < Samples; k++)
+            {
+                float a = (float)(2 * Math.PI * k / Samples);
+                wall[k] = w.Map.RayCast(X, Y, (float)Math.Cos(a), (float)Math.Sin(a), MaxRange);
+            }
+            // a pillar stops the fire, and leaves a shadow behind it the width of the pillar
+            foreach (var act in w.Actors)
+            {
+                var pil = act as Decor;
+                if (pil == null || !pil.Solid || pil.Img != Art.Pillar) continue;
+                float px = pil.X - X, py = pil.Y - Y;
+                float pd = (float)Math.Sqrt(px * px + py * py);
+                if (pd < 0.3f) continue;
+                float bearing = (float)Math.Atan2(py, px), half = (float)Math.Atan2(0.36f, pd);
+                for (int k = 0; k < Samples; k++)
+                {
+                    float da = (float)(2 * Math.PI * k / Samples) - bearing;
+                    while (da > Math.PI) da -= (float)(2 * Math.PI);
+                    while (da < -Math.PI) da += (float)(2 * Math.PI);
+                    if (Math.Abs(da) <= half) wall[k] = Math.Min(wall[k], Math.Max(0.1f, pd - 0.3f));
+                }
+            }
+            for (int k = 0; k < Samples; k++) farthest = Math.Max(farthest, wall[k]);
+        }
+
+        float WallAt(float a)
+        {
+            float t = a / (float)(2 * Math.PI);
+            t -= (float)Math.Floor(t);
+            int k0 = (int)(t * Samples) % Samples, k1 = (k0 + 1) % Samples;
+            return Math.Min(wall[k0], wall[k1]);
+        }
+
+        public override Image Sprite(World w) { return null; }
+
+        public override void Update(World w, float dt)
+        {
+            r += Speed * dt;
+            var p = w.P;
+            if (!p.Dead && !hitPlayer)
+            {
+                float dx = p.X - X, dy = p.Y - Y;
+                float d = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (Math.Abs(d - r) < 0.42f && d < WallAt((float)Math.Atan2(dy, dx)) && p.Z < ClearHeight)
+                {
+                    hitPlayer = true;
+                    p.Hurt(w, w.Rng.Next(dmgMin, dmgMax + 1), X, Y);
+                }
+            }
+            emit -= dt;
+            if (emit <= 0)
+            {
+                emit = 0.06f;
+                int n = Math.Max(24, Math.Min(360, (int)(2 * Math.PI * r / 0.55f)));
+                float jitter = (float)(w.Rng.NextDouble() * 2 * Math.PI / n);
+                for (int i = 0; i < n; i++)
+                {
+                    float a = (float)(2 * Math.PI * i / n) + jitter;
+                    if (r >= WallAt(a)) continue;
+                    float fx = X + (float)Math.Cos(a) * r, fy = Y + (float)Math.Sin(a) * r;
+                    float px = fx - p.X, py = fy - p.Y;
+                    if (px * px + py * py > 16 * 16) continue;
+                    var fl = new Effect(Art.Fireball, fx, fy, 0, 0.24f);
+                    fl.Scale = 1f / 70;
+                    fl.Glow = true;
+                    fl.VZ = 0.25f;
+                    if ((i & 7) == 0) fl.Light = 2.6f;
+                    w.Add(fl);
+                }
+            }
+            if (r > farthest || r > MaxRange) Remove = true;
+        }
+    }
+
     sealed class LaserArc : Actor
     {
         public const float HalfAngle = 0.62f, Speed = 15f, Range = 18f;
@@ -953,7 +1129,8 @@ namespace TerminalHell
                 if (Math.Abs(da) > HalfAngle + (float)Math.Atan2(a.Radius, Math.Max(0.3f, dist))) continue;
                 if (!w.Map.LOS(X, Y, a.X, a.Y)) continue;
                 Hit.Add(a);
-                a.Damage(w, w.Rng.Next(dmgMin, dmgMax + 1), owner, false);
+                // the slicer's edge cuts deepest up close: double damage at point blank, easing to the plain figure by four tiles
+                a.Damage(w, w.Rng.Next(dmgMin, dmgMax + 1) * (1f + Math.Max(0f, 1f - (dist - a.Radius) / 4f)), owner, false);
                 var flare = new Effect(Art.ArcMote, a.X, a.Y, Math.Max(0, oz - 0.12f), 0.22f);
                 flare.Scale = 1f / 36;
                 flare.Glow = true;

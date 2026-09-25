@@ -90,7 +90,7 @@ namespace TerminalHell
             new BonusWeapon("E1M3", '6', 94.5f, 3.5f, "the security armory off the last stretch of corridor before the boss"),
             new BonusWeapon("E2M1", '7', 53.5f, 15.5f, "the research wing through the cut in the cliff, east side of the courtyard"),
             new BonusWeapon("E2M2", '8', 47.5f, 17.5f, "the prototype vault behind the blue-key room, on a platform in a slime moat"),
-            new BonusWeapon("E2M3", '9', 21.5f, 18.5f, "the armory between the red door and the Warden's arena"),
+            new BonusWeapon("E2M3", '9', 2.5f, 19.5f, "the far northwest corner of the west room, next to the blue keycard"),
         };
 
         void SpawnBonusWeapon()
@@ -770,7 +770,7 @@ namespace TerminalHell
                 const float speed = 20;
                 var bolt = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.RAY);
                 bolt.DmgMin = d.DmgMin; bolt.DmgMax = d.DmgMax;
-                bolt.SplashDamage = 45; bolt.SplashRadius = 1.6f;
+                bolt.SplashDamage = 90; bolt.SplashRadius = 2.6f;
                 bolt.Z = p.EyeZ - 0.1f + p.AimSlope * 0.35f;
                 bolt.VZ = p.AimSlope * speed;
                 Add(bolt);
@@ -779,10 +779,10 @@ namespace TerminalHell
             if (d.Rocket)
             {
                 // the rocket leaves along the look direction, including up / down
-                const float speed = 15;
+                const float speed = 22;
                 var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, speed, Projectile.ROCKET);
                 pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
-                pr.SplashDamage = 128; pr.SplashRadius = 2.7f;
+                pr.SplashDamage = 140; pr.SplashRadius = 3.8f;
                 pr.Z = p.EyeZ - 0.12f + p.AimSlope * 0.35f;
                 pr.VZ = p.AimSlope * speed;
                 Add(pr);
@@ -793,7 +793,7 @@ namespace TerminalHell
                 // lobbed along the look direction with a little lift, so it drops in a low arc and skips along the floor
                 var pr = new Projectile(p, p.X + dx * 0.35f, p.Y + dy * 0.35f, p.Angle, Projectile.GrenadeSpeed, Projectile.GRENADE);
                 pr.DmgMin = d.DmgMin; pr.DmgMax = d.DmgMax;
-                pr.SplashDamage = 115; pr.SplashRadius = 2.4f;
+                pr.SplashDamage = 100; pr.SplashRadius = 1.7f;
                 pr.Fuse = 2.5f;
                 pr.Z = p.EyeZ - 0.13f;
                 pr.VZ = Projectile.GrenadeLift + p.AimSlope * Projectile.GrenadeSpeed;
@@ -813,7 +813,7 @@ namespace TerminalHell
             {
                 float a = p.Angle + (float)((Rng.NextDouble() - 0.5) * 2 * spread);
                 float slope = p.AimSlope + (float)((Rng.NextDouble() - 0.5) * spread);
-                Hitscan(p.X, p.Y, p.EyeZ, a, slope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p);
+                Hitscan(p.X, p.Y, p.EyeZ, a, slope, 40, Rng.Next(d.DmgMin, d.DmgMax + 1), p, d.Falloff);
             }
         }
 
@@ -848,7 +848,12 @@ namespace TerminalHell
             }
             p.BeamDist = best;
             p.BeamOnBody = hit != null;
-            if (hit != null) hit.Damage(this, d.DmgPerSec * dt, p, false);
+            if (hit != null)
+            {
+                hit.Damage(this, d.DmgPerSec * dt, p, false);
+                var slowed = hit as Monster;
+                if (slowed != null) slowed.SlowTime = 0.5f;   // the beam slows what it burns instead of staggering it
+            }
 
             // where it lands: a shower of sparks (or a spray of blood), and red light on the walls around it
             float ex = p.X + dx * (best - 0.05f), ey = p.Y + dy * (best - 0.05f), ez = Math.Max(0.03f, Math.Min(0.97f, z + slope * best));
@@ -888,7 +893,7 @@ namespace TerminalHell
         /// A bullet from (x, y, z) along a horizontal angle and a vertical slope (height change per unit of distance).
         /// It stops at the first wall, floor, ceiling or body in its way.
         /// </summary>
-        void Hitscan(float x, float y, float z, float ang, float slope, float range, int dmg, Actor source)
+        void Hitscan(float x, float y, float z, float ang, float slope, float range, int dmg, Actor source, float falloff = 0)
         {
             float dx = (float)Math.Cos(ang), dy = (float)Math.Sin(ang);
             float wall = Map.RayCast(x, y, dx, dy, range);
@@ -933,6 +938,8 @@ namespace TerminalHell
             float hz = Math.Max(0.02f, Math.Min(0.98f, z + slope * best));
             if (hit != null)
             {
+                // a short-range weapon's pellets lose their bite the further they travel: full up close, a tenth at the limit
+                if (falloff > 0) dmg = Math.Max(1, (int)(dmg * Math.Max(0.1f, Math.Min(1f, 1.1f - best / falloff))));
                 hit.Damage(this, dmg, source, false);
                 if (hit.Kind == ActorKind.Monster) SpawnBlood(x + dx * best, y + dy * best, hz - 0.05f, 2);
                 else SpawnPuff(x + dx * (best - 0.05f), y + dy * (best - 0.05f), hz);
@@ -1029,6 +1036,7 @@ namespace TerminalHell
         /// <summary>The ray gun's shot: an instant beam of hell light, and a heavy burst where it lands.</summary>
         public void PlayerRay(Player p, WeaponDef d)
         {
+            Audio.Play(Sfx.RayGun, 1f, 0, 1f, 0);   // the discharge: the whine snapping into the shot
             float dx = (float)Math.Cos(p.Angle), dy = (float)Math.Sin(p.Angle);
             float slope = p.AimSlope, z = p.EyeZ - 0.05f;
             const float range = 40;
@@ -1068,7 +1076,7 @@ namespace TerminalHell
             if (hit != null) hit.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1), p, false);
             // and the burst at the far end
             float bx = p.X + dx * Math.Max(0.4f, best - 0.2f), by = p.Y + dy * Math.Max(0.4f, best - 0.2f);
-            Explode(bx, by, Math.Max(0.05f, Math.Min(0.95f, z + slope * best)), 130, 3.1f, p);
+            Explode(bx, by, Math.Max(0.05f, Math.Min(0.95f, z + slope * best)), 260, 4.6f, p);
         }
 
         /// <summary>A punch: hits the first thing within reach in front of the player.</summary>
@@ -1097,7 +1105,16 @@ namespace TerminalHell
             var bitten = best as Monster;
             bool winding = bitten != null && (bitten.State == MState.WindUp || bitten.State == MState.Fire);
             Audio.Play(d.Saw ? d.Sound : Sfx.Punch, 0.9f, 0, d.Saw ? 0.9f + (float)Rng.NextDouble() * 0.25f : 1, 0);
-            best.Damage(this, Rng.Next(d.DmgMin, d.DmgMax + 1) * damageMul, p, false);
+            float dmgMul = damageMul;
+            float blow = Rng.Next(d.DmgMin, d.DmgMax + 1);
+            if (!d.Saw && bitten != null)
+            {
+                // a fist does real harm only to the soldiers - it flattens a possessed in three punches, however the dice
+                // fall - and against anything bigger or stranger it is close to useless
+                if (bitten.Def == MonsterDef.Ghoul) blow = (bitten.Def.Health / 3f + 1f) * (1f + (float)Rng.NextDouble() * 0.2f);
+                else dmgMul *= 0.3f;
+            }
+            best.Damage(this, Math.Max(1, blow * dmgMul), p, false);
             float hx = best.X - dx * best.Radius, hy = best.Y - dy * best.Radius;
             if (best.Kind == ActorKind.Monster) SpawnBlood(hx, hy, 0.45f, d.Saw ? 2 : 3);
             if (!d.Saw) return true;

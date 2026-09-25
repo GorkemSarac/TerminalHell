@@ -11,12 +11,12 @@
 //   floors  . floor A   _ floor B   - floor C   , outdoor (open sky)   ~ lava   : outdoor lava   = toxic slime   ; outdoor slime
 //           # metal walkway (safe to cross over lava or slime)
 //   player  ^ > v <  start position and facing
-//   enemies z ghoul (rifle)   ` a ghoul carrying the red keycard   i fiend (fireballs)   p brute (melee)   K the Warden (boss)
+//   enemies z possessed (rifle)   ` a possessed carrying the red keycard   i fire demon (fireballs)   p gluttony demon (melee)   K the Warden (boss)
 //   items   h stimpack  m medikit  + health bonus  o soul orb  a armor bonus  G green armor  U blue armor
 //           c clip  C box of bullets  e shells  E box of shells  q rocket  Q box of rockets
 //           w soul cells (ray gun ammo: secret rooms only)
-//           " energy cell  \ box of energy cells (ammo for the laser and the laser ray)
-//           the saw, double barrel, laser, laser ray and grenade launcher have no map character: World.BonusWeapons places them
+//           " energy cell  \ box of energy cells (ammo for the beam rifle and the laser slicer)
+//           the saw, double barrel, beam rifle, laser slicer and grenade launcher have no map character: World.BonusWeapons places them
 //           g pistol  S shotgun  N minigun  L rocket launcher  W ray gun  r/b/y keycards  { boarding pass
 //   decor   % explosive barrel  * ceiling lamp  ! torch  t tech lamp  | pillar  & corpse  x blood pool  k skulls
 //           d check-in desk  j/l waiting seats (empty / taken)  ( wrecked seats  ) rubble  n plant  s luggage  T luggage cart
@@ -135,7 +135,7 @@ namespace TerminalHell
                 "VVVVVVVVVF....................AVVVVVVVVVVVVVVVDVVVVVVVVVVVVVVVVV",
                 "VVVVVVVVVFn...u..............dAVVVVV,,,,,@,,,,,,,,,,,,,ZZZZZZ,,Z",
                 "VVVVVVVVVF...*.....*.u..s*.u.dAVVVVV,,,,,,,,,,,,,,,,,,,Z,z,,Z,aZ",
-                "VVVVVVVVVF...................dHVVVVV,,,,,),,,,,,m,,,T,,Baw,qZ,,Z",
+                "VVVVVVVVVF...................dHVVVVV,,,,,),,,,,,m,,,T,,Baw,cZ,,Z",
                 "VVVVVVVVVF....j.l..[..j.l..u.dAVVVVV,,,,,,,,z,,,,,@,,,,Z,,z,Z,,Z",
                 "VVVVVVVVVF........u...........AVVVVV,,,,%,,,,,,,,s,,,,,ZZZZZZ,,Z",
                 "VVVVVVVVVF...................dAVVVVV,,,,,,,,VVVV,,,,,z,,,,),%,,Z",
@@ -200,7 +200,7 @@ namespace TerminalHell
                 "VVVVVVVVVVVVVVVZ%__*______*_*____hZVVVVVVVVVVVVVVVVVVV___U_VVVVVVVVVVVVV",
                 "VVVVVVVVVVVVVVVZ_____z_____'______ZVVVVVVVVVVVVVVVVVVV_____VVVVVVVVVVVVV",
                 "VVVVVVVVVVVVVVVZ_____________'_d__ZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
-                "VVVVVVVVVVVVVVVZ_%q___T_dd_d_)__'tZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+                "VVVVVVVVVVVVVVVZ_%e___T_dd_d_)__'tZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
                 "VVVVVVVVVVVVVVVZZZZZZZZZZZZZZZZZZZZVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
                 "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
                 },
@@ -222,7 +222,7 @@ namespace TerminalHell
                 "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV33333333333333333333333333333333VVVVVVV",
                 "VVVVVVVVVVVVVVVVVVVAAAAAAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3333333333333333VVVVV3t_|_|___|_|_t33,,,,,,,,,,,,,,,3VVVVVVV",
                 "VVAAAAAAAAAAAAAAAAVA.......AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3______________3VVVVV3_____________33,,,,,,,,,,,,,,,3VVVVVVV",
-                "VVA..............AVA.*.r...AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3_C_____m_'__t_3VVVVV3___*_____*___33,m,,,,,,,,,,,,,3VVVVVVV",
+                "VVA..............AVA.*.r...AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3_E_____m_'__t_3VVVVV3___*_____*___33,m,,,,,,,,,,,,,3VVVVVVV",
                 "VVA.u.,,,,,......AVA.....|.AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3__z__%_____z__3VVVVV3mE__'______E_33,,,|,,,,,,,|,,,3VVVVVVV",
                 "VVA...,,,,,..z...AVA.z.....AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3_t____________3VVVVV3________'____33,,,,,,,,,,,,,,,3VVVVVVV",
                 "VVA...,,,,,......AVA.......AVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV3__a|'_____%_e_3VVVVV3_z_e_____e_z_33,,,,,,,,,,,,,,,3VVVVVVV",
@@ -230,7 +230,7 @@ namespace TerminalHell
                 "VVA...,,,,,......AVAAAADAAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV33333333D3333333VVVVV3333333D33333333,,,,,,,,,,,,,,,3333333V",
                 "VVA.....)........A..z..........z........z3333______________________________________z__________________3,,,,,,,,,,,,,,,3----33V",
                 "VVA..............D......................__R.B________________________________________________________zD,!,,,,,,,,,,,!,Y----X3V",
-                "VVA..............A.........c....C......._3333__'______________________________________%___'___________3,,,,,,,,,,,,,,,3----33V",
+                "VVA..............A.........e....C......._3333__'______________________________________%___'___________3,,,,,,,,,,,,,,,3----33V",
                 "VVA.........'....AVVVVVVVVVVVVAAAADAAAAVVVVVVVVVVV3333333D3333333VVVVVVVVVVVVVVVVVVV33$333VVVVVVVVVVVV3,,,,,,,,,,,,,,,3333333V",
                 "VVA..^........c..AVVVVVVVVVVVVA.......AVVVVVVVVVVV3_____________3VVVVVVVVVVVVVVVVVVV3____3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
                 "VVA..............AVVVVVVVVVVVVA.......AVVVVVVVVVVV3__t_______t__3VVVVVVVVVVVVVVVVVVV3_w__3VVVVVVVVVVVV3,,,,,,,,,,,,,,,3VVVVVVV",
@@ -279,10 +279,10 @@ namespace TerminalHell
                 "3333___3333_____33332,,,;;;;;,,,,,,,,,,003_%_____i______70",
                 "3333___3333__z__33332,,,,e,,,,,,,,,,|,,003t_dd______%__t30",
                 "33......&.3_____33332,,,,,%,%,,,,,,,,,,0033333333333333330",
-                "33...*....3e_*__33332,,,,,,C,,,,,,,,,,,0000000000000000000",
+                "33...*....3e_*__33332,,,,,,q,,,,,,,,,,,0000000000000000000",
                 "33........D_____3__G2,,,,,,,,,,,,,,z,,,0000000000000000000",
                 "33...^....3_____$_w_2,,,,,,,,,,,,,,,,,,0000000000000000000",
-                "33a......c3%___%3aa_2,&,,,,,,,,,,,,,,m,0000000000000000000",
+                "33a......\"3%___%3aa_2,&,,,,,,,,,,,,,,m,0000000000000000000",
                 "33........3_____33332,,x,,,,,,,,,,,,,,,0000000000000000000",
                 "333333333333333333332,,,,,,,,,,,,,,,,,,0000000000000000000",
                 "3333333333333333333330000000000000000000000000000000000000",
@@ -315,17 +315,17 @@ namespace TerminalHell
                 "8*_____88888888888.*.88888888888888787888%............\"88",
                 "8_p__z_88888888888...888888888888....b.88.i..........p.78",
                 "8______888888888888D8888888888888...*..88..==========..78",
-                "8______8h......................C8.z....78..==========..78",
+                "8______8h......................\"8.z....78..==========..78",
                 "8_====_8..|.z.*.......p..*...|..8......88..==t....t==..78",
                 "8_====_D.......%...e...%...z....8.....G78..==...*..==..78",
-                "8_=C_=_8..........z.............8......D...##....\\.==..78",
+                "8_=\\_=_8..........z.............8......D...##....\\.==..78",
                 "8_====_8;;;;,,;;;;;;;;;;;;,,;;;;8....z.78..==......==..78",
                 "8_====_8;;;;,,;;;;;;;;;;;;,,;;;;8......88..==t\"...t==..78",
                 "8e____*8........................8&.*...78..==========..78",
                 "8______8............aa..%.......D......88..==========..78",
                 "8____p_8..|...*.....i....*...|..8..i...78.i..........p.78",
                 "8______8.z......%.............z.8......88%............\"88",
-                "8m____C8e......................a8.....t888888888888888888",
+                "8m____q8e......................a8.....t888888888888888888",
                 "8888888888888888833D338888888888888$888888888888888888888",
                 "888888888888888883___3888888888888..q88888888888888888888",
                 "888888888888888883_*_3888888888888w..88888888888888888888",
@@ -356,11 +356,11 @@ namespace TerminalHell
                 "66660,,,,,,,|,,,,i,,,K,,,i,,,,|,,,,,,,,06666666",
                 "66660,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,06666666",
                 "66660,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,06666666",
-                "66660:::::,,::::::::,,,::::::::,,::::::06666666",
+                "66660,,::,,,,,::::,,,,,,,::::,,,,,::::,06666666",
                 "66660,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,06666666",
                 "66660,,,,,,,,,,,,,,,,q,,,,,,,,,,,,,,,,,06666666",
-                "66660,,,,,,,,,:::,,h,q,h,,:::,,,,,,,,,,06666666",
-                "66660,,,,,,,|,:::,,,,,,,,,:::,|,,,,,,,,06666666",
+                "66660,,,,,,,,,,:,,,h,q,h,,,:,,,,,,,,,,,06666666",
+                "66660,,,,,,,|,,:,,,,,,,,,,,:,,|,,,,,,,,06666666",
                 "66660,,,,,,,,,,,,,,,,U,,,,,,,,,,,,,,,,,06666666",
                 "66660,Q,!,,,,,,,,,,,,,,,,,,,,,,,,,!,,E,06666666",
                 "666655555555555555555D5555555555555555556666666",
@@ -368,20 +368,20 @@ namespace TerminalHell
                 "60::::::::::::05_Q_______Q_566.q..6.r.....m6666",
                 "60,,,,::::::::05__q_____q__566....6.....z..6666",
                 "60,,i,,,::::::05!_m_____h_!566....6.\\......6666",
-                "60,,,Q:,::::::9999955R55999999....6...p....6666",
-                "60:::::,::,,E:9C_!________!_a9..z.6!......!6666",
+                "60b,,Q:,::::::9999955R55999999....6...p....6666",
+                "60:::::,::,,E:9q_!________!_a9..z.6!......!6666",
                 "60:::::,::,p,:9~~__________~~9....6........6666",
                 "60:::::,#,,,,:9~~_i________~~9....6666666.66666",
                 "60:::::,::::::9~~____++____~~9...!6........6666",
-                "60:::::,,,,,,,D##___z______##D.+..6..\"..e..6666",
+                "60:::::,,,,,,,D##___z______##B.+..6..\"..e..6666",
                 "60:::::,::::::9~~__k____k__~~9.+..6...p....6666",
                 "60:::::,::::::9~~____e_____~~9....6...L....6wo6",
                 "60:::::k::::::9__!________!__9....6........$..6",
-                "60:::::,::::::9999555D55559999...i6.......C6wU6",
-                "60:::::,::::::::::5!____e56666.....z.......6666",
+                "60:::::,::::::9999555D55559999...i6.......\"6wU6",
+                "60:::::,::::::::::5!____\"56666.....z.......6666",
                 "60,i,\",,,,p,,:::W:5______56666z.........!..6666",
                 "60q,,,,,,,,,m:::::5__^__!56666.......k...i.6666",
-                "6000000000000000005a____c56666..m..........6666",
+                "6000000000000000005a____\\56666..m..........6666",
                 "66666666666666666655555555666666666666666666666",
                 },
             };

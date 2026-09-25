@@ -355,7 +355,8 @@ namespace TerminalHell
                             if (m.In(nx, ny) && m.Kind[ny * m.W + nx] != CellKind.Wall && m.Kind[ny * m.W + nx] != CellKind.Push) edge = true;
                         }
                         if (!edge) continue;
-                        c = Col.Rgb(190, 60, 40);
+                        // a secret (push) wall is drawn a shade off from the rest, so it can be spotted on the map
+                        c = k == CellKind.Push ? Col.Rgb(222, 128, 60) : Col.Rgb(190, 60, 40);
                     }
                     else if (k == CellKind.Door)
                     {

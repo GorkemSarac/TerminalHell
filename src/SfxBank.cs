@@ -310,15 +310,15 @@ namespace TerminalHell
             }
             bank[(int)Sfx.LaserHum] = b;
 
-            // the laser ray charging: a rising whine that climbs and tightens until it lets go
-            b = Buf(0.9f);
+            // the laser slicer charging: a rising whine that climbs and tightens until it lets go
+            b = Buf(1.35f);
             {
                 var f = new Svf();
                 double ph = 0;
                 for (int i = 0; i < b.Length; i++)
                 {
                     float t = (float)i / R;
-                    float u = Math.Min(1, t / 0.85f);
+                    float u = Math.Min(1, t / 1.3f);
                     ph += (260 + 1500 * u * u) / R;
                     float tone = (float)(Math.Sin(ph * 2 * Math.PI) + 0.4 * Math.Sin(ph * 4 * Math.PI));
                     float fizz = f.Process(Rnd(), 3000 + 3000 * u, 0.5f, 0) * 0.25f * u;
@@ -327,6 +327,24 @@ namespace TerminalHell
                 Normalize(b, 0.55f);
             }
             bank[(int)Sfx.LaserCharge] = b;
+
+            // the ray gun winding up: a deep hum that swells and climbs for two and a half seconds, then cuts dead
+            b = Buf(2.45f);
+            {
+                var f = new Svf();
+                double ph = 0;
+                for (int i = 0; i < b.Length; i++)
+                {
+                    float t = (float)i / R;
+                    float u = Math.Min(1, t / 2.4f);
+                    ph += (90 + 1100 * u * u * u) / R;
+                    float tone = (float)(Math.Sin(ph * 2 * Math.PI) + 0.5 * Math.Sin(ph * 3 * Math.PI + Math.Sin(ph * 5)));
+                    float fizz = f.Process(Rnd(), 800 + 4200 * u, 0.55f, 0) * 0.35f * u;
+                    b[i] = (tone * (0.2f + 0.8f * u) + fizz) * Math.Min(1, (b.Length - i) / 300f) * Math.Min(1, i / 1500f);
+                }
+                Normalize(b, 0.6f);
+            }
+            bank[(int)Sfx.RayCharge] = b;
 
             // the laser ray going off: a sheet of light tearing outwards, a bright snap dropping into a whoosh
             b = Buf(0.7f);
